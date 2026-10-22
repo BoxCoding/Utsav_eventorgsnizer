@@ -7,6 +7,7 @@ the same plan, so the app always responds.
 """
 from __future__ import annotations
 
+import base64
 import json
 import re
 from datetime import date
@@ -325,6 +326,8 @@ Return JSON only: {"details": {"host": str, "venue": str, "time": str, "rsvp": s
  "email_subject": str (max 12 words),
  "email_body": str (90-160 words, starts "Dear {name},", ends with a sign-off from the host),
  "whatsapp": str (max 70 words, starts "Hi {name}", 2-3 fitting emoji),
+ "highlights": [3-4 short labels (1-2 words each, max 14 characters) for the event's key
+   moments or attractions from the brief, e.g. "Pooja", "Live music", "Dinner"],
  "design": {"layout": "centered"|"editorial"|"framed"|"poster",
             "type": "serif"|"modern"|"playful"|"script",
             "text_tone": "light"|"dark" (light = white text over darker artwork),
@@ -368,6 +371,7 @@ def _clean_concept(raw: Any) -> dict[str, Any]:
     out["hashtag"] = f"#{tag}"[:40] if tag else ""
     d = raw["design"]
     palette = [c for c in d.get("palette", []) if isinstance(c, str) and _HEX.match(c)][:5]
+    out["highlights"] = _clean_highlights(raw.get("highlights"))
     art = d.get("art_prompt")
     out["design"] = {
         "layout": d.get("layout") if d.get("layout") in LAYOUTS else "framed",
@@ -377,6 +381,12 @@ def _clean_concept(raw: Any) -> dict[str, Any]:
         "art_prompt": art.strip()[:600] if isinstance(art, str) and art.strip() else "",
     }
     return out
+
+
+def _clean_highlights(raw: Any) -> list[str]:
+    items = raw if isinstance(raw, list) else []
+    labels = [" ".join(x.split())[:14] for x in items if isinstance(x, str) and x.strip()]
+    return list(dict.fromkeys(labels))[:4]
 
 
 def _clean_invite(raw: Any) -> list[dict[str, Any]]:
@@ -464,6 +474,62 @@ def art_prompt(concept: dict[str, Any], fmt: str, event: dict[str, Any] | None =
     )
 
 
+
+def poster_lines(concept: dict[str, Any], event: dict[str, Any]) -> dict[str, Any]:
+    """The exact words a poster must carry; also what the proof-reader checks against."""
+    details = (event.get("invite") or {}).get("details") or {}
+    info = [("DATE", pretty_date(event["event_date"]))]
+    info += [(label, details[key]) for label, key in (("TIME", "time"), ("VENUE", "venue"))
+             if details.get(key)]
+    footer = f"RSVP: {details['rsvp']}" if details.get("rsvp") else concept["hashtag"]
+    return {"title": event["name"], "tagline": concept["headline"],
+            "highlights": concept.get("highlights") or _plan_highlights(event),
+            "info": info, "footer": footer}
+
+
+def poster_prompt(concept: dict[str, Any], event: dict[str, Any]) -> str:
+    """A complete illustrated poster with typography, like a festival flyer."""
+    lines = poster_lines(concept, event)
+    design = concept["design"]
+    culture = " ".join(x for x in (event.get("tradition"), event.get("vibe"), event.get("city"))
+                       if x)[:200]
+    icons = ", ".join(f"'{h.upper()}'" for h in lines["highlights"])
+    info = "; ".join(f"'{label}: {value}'" for label, value in lines["info"])
+    return (
+        "Design a stunning, richly illustrated portrait event invitation poster, like a premium "
+        f"festival flyer. Concept: {concept['angle']} Art direction: {design['art_prompt']} "
+        f"{'Culturally authentic to: ' + culture + '. ' if culture else ''}"
+        f"Colour palette: {', '.join(design['palette'])}. Layout from top to bottom: "
+        f"1) A large decorative hand-lettered title reading exactly '{lines['title']}'. "
+        f"2) A smaller tagline reading exactly '{lines['tagline']}'. "
+        + (f"3) A row of round illustrated icons, each with a label underneath: {icons}. "
+           if icons else "")
+        + f"4) Clean info rows, each with a small matching icon: {info}. "
+        f"5) A decorative footer banner reading exactly '{lines['footer']}'. "
+        "Every piece of text must be spelled exactly as given, crisp and legible, with high "
+        "contrast against its background. No other text, no watermarks, no logos. Full-bleed "
+        "artwork, not a photo of a printed card."
+    )
+
+
+PROOF_SYSTEM = """You are a meticulous proof-reader for printed invitations. Compare the text
+visible in the image with the expected lines. A line is wrong if any word, digit, date,
+time or name differs, is missing, garbled or misspelt (case and punctuation do not
+matter). Return JSON only: {"wrong": [the expected lines that are not reproduced exactly]}"""
+
+
+async def proofread_poster(image: bytes, mime: str, lines: dict[str, Any]) -> list[str]:
+    """Lines the image gets wrong (empty = verified). Raises LLMUnavailableError if unsure."""
+    expected = [lines["title"], *(f"{k}: {v}" for k, v in lines["info"]), lines["footer"]]
+    raw = await gemini_client.generate_json(
+        "Expected lines:\n" + "\n".join(expected), system=PROOF_SYSTEM,
+        image_base64=base64.b64encode(image).decode(), image_mime=mime,
+    )
+    wrong = raw.get("wrong") if isinstance(raw, dict) else None
+    if not isinstance(wrong, list):
+        raise LLMUnavailableError("proof-read returned no verdict")
+    return [w for w in wrong if isinstance(w, str)]
+
 _OPENERS = {
     "elegant": ("Together with joy", "request the pleasure of your company at"),
     "fun": ("You're invited!", "would love you to join us for"),
@@ -478,6 +544,13 @@ _FALLBACK_LOOKS = (
     ("Joyful Pop", "poster", "playful", "dark", "Bright confetti, streamers and playful "
      "geometric shapes scattered along the bottom, light airy background."),
 )
+
+
+def _plan_highlights(event: dict[str, Any]) -> list[str]:
+    """Icon-row labels from the event's own budget categories when the model gives none."""
+    cats = list((event.get("split_override") or PROFILES[event["kind"]]["split"]).keys())
+    names = [c.split(" & ")[0] for c in cats if c not in {"Contingency", "Planning"}]
+    return _clean_highlights(names)
 
 
 def fallback_invite(event: dict[str, Any], details: dict[str, str]) -> list[dict[str, Any]]:
@@ -516,6 +589,7 @@ def fallback_invite(event: dict[str, Any], details: dict[str, str]) -> list[dict
                 f"{rsvp}\n\nWarm regards,\n{details['host'] or 'Your hosts'}"
             ),
             "whatsapp": f"Hi {{name}} {emoji} {body} {rsvp}",
+            "highlights": _plan_highlights(event),
             "design": {"layout": layout, "type": typ, "text_tone": tone_, "palette": palette,
                        "art_prompt": art},
         }

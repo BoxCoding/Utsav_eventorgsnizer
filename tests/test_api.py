@@ -204,6 +204,51 @@ def test_artwork_painted_stored_and_served(client, monkeypatch):
     assert client.get(f"/api/events/{event_id}/invite/art/1-banner").status_code == 404
 
 
+def test_poster_is_proofread_and_retried(client, monkeypatch):
+    from backend.app import ai
+    from backend.app.routers import events as events_router
+
+    prompts, verdicts = [], [["VENUE: Rambagh Palace"], []]  # first attempt misspells the venue
+
+    async def fake_image(prompt, aspect):
+        prompts.append((prompt, aspect))
+        return "image/png", b"poster"
+
+    async def fake_proof(image, mime, lines):
+        assert ("VENUE", "Rambagh Palace") in lines["info"] and lines["info"][0][0] == "DATE"
+        return verdicts.pop(0)
+
+    monkeypatch.setattr(events_router, "generate_image", fake_image)
+    monkeypatch.setattr(ai, "proofread_poster", fake_proof)
+    event_id = _create(client)["event"]["id"]
+    client.post(f"/api/events/{event_id}/invite",
+                json={"tone": "elegant", "venue": "Rambagh Palace", "time": "7 pm"})
+    r = client.post(f"/api/events/{event_id}/invite/art", json={"concept": 0, "format": "poster"})
+    assert r.json() == {"key": "0-poster", "verified": True}
+    assert len(prompts) == 2 and prompts[0][1] == "2:3"
+    assert "'VENUE: Rambagh Palace'" in prompts[0][0] and "'TIME: 7 pm'" in prompts[0][0]
+    assert client.get(f"/api/events/{event_id}/invite/art/0-poster").content == b"poster"
+
+
+def test_poster_that_never_passes_is_not_saved(client, monkeypatch):
+    from backend.app import ai
+    from backend.app.routers import events as events_router
+
+    async def fake_image(prompt, aspect):
+        return "image/png", b"bad"
+
+    async def always_wrong(image, mime, lines):
+        return [lines["title"]]
+
+    monkeypatch.setattr(events_router, "generate_image", fake_image)
+    monkeypatch.setattr(ai, "proofread_poster", always_wrong)
+    event_id = _create(client)["event"]["id"]
+    client.post(f"/api/events/{event_id}/invite", json={"tone": "fun"})
+    r = client.post(f"/api/events/{event_id}/invite/art", json={"concept": 2, "format": "poster"})
+    assert r.status_code == 422
+    assert client.get(f"/api/events/{event_id}/invite/art").json() == {"art": []}
+
+
 def test_artwork_offline_is_a_clear_503(client):
     event_id = _create(client)["event"]["id"]
     client.post(f"/api/events/{event_id}/invite", json={"tone": "elegant"})

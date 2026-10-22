@@ -470,7 +470,11 @@ progress::-moz-progress-bar { background: var(--accent); border-radius: 999px; }
 .inv-head h3 { margin: 0 0 .15rem; font-size: 1.05rem; }
 .inv-head p { margin: 0; }
 .style-row { display: flex; gap: .35rem; }
-.designs { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.6fr); gap: 1rem; align-items: start; }
+.designs { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.25fr); gap: 1rem; align-items: start; }
+.design-stack { display: grid; gap: 1rem; }
+.poster-design img { width: 100%; height: auto; display: block; border-radius: 10px; box-shadow: var(--shadow-lg); }
+.poster-empty { aspect-ratio: 2 / 3; display: grid; place-content: center; gap: .8rem; justify-items: center; text-align: center; padding: 1.5rem; border-radius: 10px; color: var(--muted); background: linear-gradient(160deg, color-mix(in srgb, var(--brand, #7c3aed) 14%, var(--surface)), var(--surface-2)); }
+.poster-empty p { max-width: 26ch; margin: 0; }
 .design { margin: 0; border: 1px solid var(--line); border-radius: 16px; padding: .75rem; background: var(--surface-2); }
 .design canvas { width: 100%; height: auto; display: block; border-radius: 10px; box-shadow: var(--shadow-lg); background: #131316; }
 .design figcaption { display: flex; justify-content: space-between; align-items: center; gap: .5rem; flex-wrap: wrap; padding-top: .7rem; font-size: .8rem; color: var(--muted); }
@@ -526,7 +530,7 @@ code { background: var(--surface-2); border-radius: 5px; padding: .05rem .3rem; 
 .spinner { width: 14px; height: 14px; border-radius: 50%; border: 2px solid rgb(255 255 255 / 35%); border-top-color: #fff; animation: spin .8s linear infinite; display: inline-block; }
 @keyframes spin { to { transform: rotate(360deg); } }
 .design { position: relative; }
-.design.busy canvas { animation: breathe 1.6s ease-in-out infinite; }
+.design.busy canvas, .design.busy .poster-empty { animation: breathe 1.6s ease-in-out infinite; }
 @keyframes breathe { 50% { opacity: .55; filter: saturate(.6) blur(1px); } }
 .verse-card { margin: 1rem 0 0; padding: 1.1rem 1.25rem; border-radius: 12px; background: var(--surface); border: 1px solid var(--line); }
 .verse-card p { margin: 0 0 .5rem; white-space: pre-line; font: italic 500 1.15rem/1.45 'Cormorant Garamond', Georgia, serif; }

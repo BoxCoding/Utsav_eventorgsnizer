@@ -121,17 +121,44 @@ function conceptsHtml(inv) {
     </section>`;
 }
 
+const FORMATS = ['poster', 'invite', 'banner'];
+
+function isPainted(i = ctx.concept) {
+  return FORMATS.every((f) => ctx.art.has(`${i}-${f}`) || (f === 'poster' && ctx.posterFailed.has(i)));
+}
+
+function posterHtml(c) {
+  const key = `${ctx.concept}-poster`;
+  const has = ctx.art.has(key);
+  const body = has
+    ? `<img id="poster-img" src="/api/events/${ctx.event.id}/invite/art/${key}?v=${ctx.art.get(key)}" alt="AI poster: ${esc(ctx.event.name)}, ${esc(c.headline)}">`
+    : `<div class="poster-empty">${ctx.painting
+      ? '<span class="spinner" aria-hidden="true"></span><p>Gemini is illustrating your poster and proof-reading every detail…</p>'
+      : ctx.posterFailed.has(ctx.concept)
+        ? '<p>The AI poster could not get every detail exactly right, so it was not used. Your card and banner are exact. Try <b>Repaint</b>.</p>'
+        : '<p>A fully illustrated poster with your title, highlights, date, time and venue.</p>'}</div>`;
+  return `
+    <figure class="design poster-design ${ctx.painting && !has ? 'busy' : ''}">
+      ${body}
+      <figcaption><span>AI poster · proof-read ${has ? '✓' : ''}</span>
+        ${has ? `<span class="d-actions"><button class="btn ghost sm" type="button" data-dl="poster">Download</button>
+        <button class="btn ghost sm" type="button" data-share-img="poster">Share</button></span>` : ''}</figcaption>
+    </figure>`;
+}
+
 function designsHtml() {
   const c = concept();
-  const painted = ['invite', 'banner'].every((f) => ctx.art.has(`${ctx.concept}-${f}`));
+  const painted = isPainted();
   return `
     <section class="inv-section">
       <div class="inv-head">
-        <div><h3>${esc(c.name)}</h3><p class="muted small">${painted ? 'Artwork painted by Gemini.' : 'Preview. Paint custom AI artwork for this concept.'} Text is set by Utsav, so every detail stays exact.</p></div>
+        <div><h3>${esc(c.name)}</h3><p class="muted small">${painted ? 'Artwork painted by Gemini.' : 'Preview. Paint custom AI artwork for this concept.'} The poster is illustrated by Gemini and proof-read against your details; the card and banner text is set by Utsav, so it is always exact.</p></div>
         <button type="button" class="btn primary paint-btn" id="paint-btn" ${ctx.painting ? 'disabled' : ''}>
           ${ctx.painting ? '<span class="spinner" aria-hidden="true"></span> Painting artwork…' : painted ? '↻ Repaint artwork' : '🎨 Paint AI artwork'}</button>
       </div>
       <div class="designs">
+        ${posterHtml(c)}
+        <div class="design-stack">
         <figure class="design invite-design ${ctx.painting ? 'busy' : ''}">
           <canvas id="cv-invite" role="img" aria-label="Invitation card: ${esc(c.headline)}"></canvas>
           <figcaption><span>Invite card · 1080×1350</span>
@@ -145,6 +172,7 @@ function designsHtml() {
             <button class="btn ghost sm" type="button" data-share-img="banner">Share</button></span></figcaption>
           <blockquote class="verse-card"><p>${esc(c.verse)}</p><cite>${esc(c.hashtag)}</cite></blockquote>
         </figure>
+        </div>
       </div>
     </section>`;
 }
@@ -240,6 +268,7 @@ export function renderInvites(event) {
     art: sameInvite ? ctx.art : new Map(),
     images: sameInvite ? ctx.images : new Map(),
     painting: sameInvite ? ctx.painting : false,
+    posterFailed: sameInvite ? ctx.posterFailed : new Set(),
   };
   renderBody();
   if (event.invite?.concepts && !sameInvite) {
@@ -247,8 +276,7 @@ export function renderInvites(event) {
     api('GET', `/api/events/${event.id}/invite/art`).then(({ art }) => {
       if (ctx.event.id !== event.id) return;
       for (const key of art) ctx.art.set(key, 1);
-      const painted = ['invite', 'banner'].every((f) => ctx.art.has(`${ctx.concept}-${f}`));
-      if (!painted && !ctx.painting && event.invite.source === 'gemini') paint();
+      if (!isPainted() && !ctx.painting && event.invite.source === 'gemini') paint();
       else if (art.length) renderBody();
     }).catch(() => {});
   }
@@ -259,20 +287,28 @@ async function paint() {
   const idx = ctx.concept;
   ctx.painting = true;
   renderBody();
-  const results = await Promise.allSettled(['invite', 'banner'].map((format) =>
+  ctx.posterFailed.delete(idx);
+  const results = await Promise.allSettled(FORMATS.map((format) =>
     api('POST', `/api/events/${event.id}/invite/art`, { concept: idx, format })));
-  for (const r of results) {
+  results.forEach((r, i) => {
     if (r.status === 'fulfilled') {
       const { key } = r.value;
       ctx.art.set(key, (ctx.art.get(key) || 0) + 1);
       ctx.images.delete(key);
-    }
-  }
+    } else if (FORMATS[i] === 'poster') ctx.posterFailed.add(idx); // don't auto-retry it
+  });
   ctx.painting = false;
   if (ctx.event.id !== event.id) return;
   const failed = results.find((r) => r.status === 'rejected');
-  toast(failed ? failed.reason.message : 'Artwork painted ✨');
+  toast(failed ? failed.reason.message : 'Poster, card and banner painted ✨');
   renderBody();
+}
+
+async function designFile(fmt) {
+  const name = `${ctx.event.name}-${fmt}`;
+  if (fmt !== 'poster') return canvasFile(`#cv-${fmt}`, `${name}.png`);
+  const blob = await (await fetch($('#poster-img').src)).blob();
+  return new File([blob], `${name}.${blob.type.split('/')[1] || 'png'}`, { type: blob.type });
 }
 
 function canvasFile(id, name) {
@@ -342,19 +378,18 @@ export function bindInvites(save) {
       renderBody();
       $(`[data-concept="${ctx.concept}"]`).focus();
       // Show every concept as finished artwork, not a flat preview.
-      const painted = ['invite', 'banner'].every((f) => ctx.art.has(`${ctx.concept}-${f}`));
-      if (!painted && !ctx.painting && event.invite.source === 'gemini') paint();
+      if (!isPainted() && !ctx.painting && event.invite.source === 'gemini') paint();
     } else if (btn.id === 'paint-btn') {
       paint();
     } else if (btn.dataset.dl) {
-      const file = await canvasFile(`#cv-${btn.dataset.dl}`, `${event.name}-${btn.dataset.dl}.png`);
+      const file = await designFile(btn.dataset.dl);
       const a = document.createElement('a');
       a.href = URL.createObjectURL(file);
       a.download = file.name;
       a.click();
       setTimeout(() => URL.revokeObjectURL(a.href), 1000);
     } else if (btn.dataset.shareImg) {
-      const file = await canvasFile(`#cv-${btn.dataset.shareImg}`, `${event.name}-${btn.dataset.shareImg}.png`);
+      const file = await designFile(btn.dataset.shareImg);
       if (navigator.canShare?.({ files: [file] })) {
         navigator.share({ files: [file], text: personalise(messages().wa, null) }).catch(() => {});
       } else toast('Image sharing works on phones. Use Download here, then attach it.');

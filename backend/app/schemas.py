@@ -121,7 +121,7 @@ class BriefRequest(BaseModel):
 
 class ArtRequest(BaseModel):
     concept: int = Field(ge=0, le=2)
-    format: Literal["invite", "banner"]
+    format: Literal["invite", "banner", "poster"]
 
 
 class Turn(BaseModel):

@@ -223,6 +223,8 @@ async def paint_art(
     concepts = (event.get("invite") or {}).get("concepts") or []
     if payload.concept >= len(concepts):
         raise HTTPException(status_code=404, detail="create invite concepts first")
+    if payload.format == "poster":
+        return await _paint_poster(event, payload.concept, concepts[payload.concept])
     aspect = "4:5" if payload.format == "invite" else "21:9"
     try:
         mime, data = await generate_image(
@@ -235,6 +237,34 @@ async def paint_art(
     key = f"{payload.concept}-{payload.format}"
     store.save_art(event_id, key, mime, data)
     return {"key": key}
+
+
+POSTER_ATTEMPTS = 3
+
+
+async def _paint_poster(event: dict[str, Any], idx: int, concept: dict[str, Any]) -> dict:
+    """A full illustrated poster with its text painted in. Gemini proof-reads every attempt
+    against the exact date, time and venue; a poster that never passes is not saved, and the
+    app keeps its text-overlay cards, which are always exact."""
+    lines = ai.poster_lines(concept, event)
+    prompt = ai.poster_prompt(concept, event)
+    for _ in range(POSTER_ATTEMPTS):
+        try:
+            mime, data = await generate_image(prompt, "2:3")
+            wrong = await ai.proofread_poster(data, mime, lines)
+        except LLMUnavailableError as exc:
+            raise HTTPException(
+                status_code=503, detail="AI posters need Gemini; try again in a moment"
+            ) from exc
+        if not wrong:
+            key = f"{idx}-poster"
+            store.save_art(event["id"], key, mime, data)
+            return {"key": key, "verified": True}
+    raise HTTPException(
+        status_code=422,
+        detail="The AI poster kept misspelling a detail, so it wasn't saved. "
+               "Your card and banner below are exact; try the poster again later.",
+    )
 
 
 @router.get("/{event_id}/invite/art/{key}")
