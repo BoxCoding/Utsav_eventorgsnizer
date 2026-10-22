@@ -34,6 +34,8 @@ class Settings:
     image_model: str = field(
         default_factory=lambda: _env("GEMINI_IMAGE_MODEL", "gemini-3.1-flash-image")
     )
+    # "sqlite" (local/dev/tests) or "firestore" (production: survives redeploys and scales)
+    store: str = field(default_factory=lambda: _env("UTSAV_STORE", "sqlite"))
     llm_timeout_seconds: float = 30.0
     image_timeout_seconds: float = 120.0
 

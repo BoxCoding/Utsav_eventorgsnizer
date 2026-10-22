@@ -522,3 +522,19 @@ def test_brief_budget_estimate_is_validated(monkeypatch):
     assert "400 guests" in absurd["budget_estimate"]["reasoning"]
     stated = ai._clean_brief({**base, "budget": 240_000, "budget_estimate": 1}, d(2026, 1, 1))
     assert stated["fields"]["budget"] == 240_000 and stated["budget_estimate"] is None
+
+
+def test_large_artwork_round_trips(client, monkeypatch):
+    """Paintings can exceed Firestore's 1 MiB doc limit; the store chunks them."""
+    from backend.app.routers import events as events_router
+    big = bytes(range(256)) * 9000  # ~2.3 MB
+
+    async def fake_image(prompt, aspect):
+        return "image/jpeg", big
+
+    monkeypatch.setattr(events_router, "generate_image", fake_image)
+    event_id = _create(client)["event"]["id"]
+    client.post(f"/api/events/{event_id}/invite", json={"tone": "elegant"})
+    client.post(f"/api/events/{event_id}/invite/art", json={"concept": 0, "format": "invite"})
+    assert client.get(f"/api/events/{event_id}/invite/art/0-invite").content == big
+    assert client.delete(f"/api/events/{event_id}").status_code == 204

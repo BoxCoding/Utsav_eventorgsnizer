@@ -5,6 +5,16 @@ import tempfile
 os.environ["UTSAV_DB"] = os.path.join(tempfile.mkdtemp(), "test.db")
 os.environ["UTSAV_OFFLINE"] = "1"
 
+# UTSAV_STORE=firestore runs the same suite against the Firestore emulator
+# (FIRESTORE_EMULATOR_HOST must point at it); wipe it so every run starts empty.
+if os.environ.get("UTSAV_STORE") == "firestore":
+    import urllib.request
+
+    os.environ.setdefault("GOOGLE_CLOUD_PROJECT", "utsav-test")
+    urllib.request.urlopen(urllib.request.Request(
+        f"http://{os.environ['FIRESTORE_EMULATOR_HOST']}/emulator/v1/projects/"
+        f"{os.environ['GOOGLE_CLOUD_PROJECT']}/databases/(default)/documents", method="DELETE"))
+
 import itertools
 from datetime import date, timedelta
 

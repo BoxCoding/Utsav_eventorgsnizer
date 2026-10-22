@@ -1,4 +1,5 @@
-"""SQLite persistence. Every event query is scoped by user_id (data isolation)."""
+"""Persistence. SQLite here; UTSAV_STORE=firestore swaps in store_firestore (same API).
+Every event query is scoped by user_id (data isolation)."""
 from __future__ import annotations
 
 import json
@@ -251,3 +252,13 @@ def art_keys(event_id: int) -> list[str]:
 def clear_art(event_id: int) -> None:
     with _conn() as conn:
         conn.execute("DELETE FROM artwork WHERE event_id = ?", (event_id,))
+
+
+if settings.store == "firestore":  # production backend; identical function signatures
+    from . import store_firestore as _firestore
+
+    for _name in ("init_db", "create_user", "get_user_by_email", "create_session",
+                  "get_session_user", "delete_session", "create_event", "list_events",
+                  "get_event", "update_event", "delete_event", "save_art", "get_art",
+                  "art_keys", "clear_art"):
+        globals()[_name] = getattr(_firestore, _name)
