@@ -51,6 +51,11 @@ CREATE TABLE IF NOT EXISTS events (
     created_at TEXT DEFAULT CURRENT_TIMESTAMP
 );
 CREATE INDEX IF NOT EXISTS idx_events_user ON events(user_id);
+CREATE TABLE IF NOT EXISTS wa_messages (
+    message_id TEXT PRIMARY KEY,
+    user_id INTEGER NOT NULL,
+    event_id INTEGER NOT NULL REFERENCES events(id) ON DELETE CASCADE
+);
 CREATE TABLE IF NOT EXISTS artwork (
     event_id INTEGER NOT NULL REFERENCES events(id) ON DELETE CASCADE,
     key TEXT NOT NULL,
@@ -254,11 +259,28 @@ def clear_art(event_id: int) -> None:
         conn.execute("DELETE FROM artwork WHERE event_id = ?", (event_id,))
 
 
+# ── WhatsApp message ids -> event, so delivery webhooks find their guest ──
+def record_wa(user_id: int, event_id: int, message_ids: list[str]) -> None:
+    with _conn() as conn:
+        conn.executemany(
+            "INSERT OR REPLACE INTO wa_messages (message_id, user_id, event_id) VALUES (?, ?, ?)",
+            [(m, user_id, event_id) for m in message_ids],
+        )
+
+
+def wa_owner(message_id: str) -> tuple[int, int] | None:
+    with _conn() as conn:
+        row = conn.execute(
+            "SELECT user_id, event_id FROM wa_messages WHERE message_id = ?", (message_id,)
+        ).fetchone()
+    return (row["user_id"], row["event_id"]) if row else None
+
+
 if settings.store == "firestore":  # production backend; identical function signatures
     from . import store_firestore as _firestore
 
     for _name in ("init_db", "create_user", "get_user_by_email", "create_session",
                   "get_session_user", "delete_session", "create_event", "list_events",
                   "get_event", "update_event", "delete_event", "save_art", "get_art",
-                  "art_keys", "clear_art"):
+                  "art_keys", "clear_art", "record_wa", "wa_owner"):
         globals()[_name] = getattr(_firestore, _name)

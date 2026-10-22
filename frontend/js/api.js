@@ -35,3 +35,10 @@ export async function api(method, path, body) {
   if (!res.ok) throw new ApiError(res.status, detailMessage(data.detail));
   return data;
 }
+
+// WhatsApp Business Cloud API connected on the server? Asked once per page load.
+let waPromise;
+export function whatsappStatus() {
+  waPromise ??= api('GET', '/api/whatsapp/status').then((r) => r.connected).catch(() => false);
+  return waPromise;
+}

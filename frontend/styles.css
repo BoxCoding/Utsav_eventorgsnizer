@@ -107,6 +107,8 @@ main { width: 100%; max-width: 1120px; margin: 0 auto; padding: 2rem 1.25rem 4re
 .notif-head, .notif-foot { display: flex; justify-content: space-between; align-items: center; padding: .85rem 1rem; gap: .5rem; }
 .notif-head { border-bottom: 1px solid var(--line); }
 .notif-foot { border-top: 1px solid var(--line); }
+.notif-wa { display: grid; gap: .3rem; padding: .7rem 1rem 0; font-size: .8rem; color: var(--muted); border-top: 1px solid var(--line); }
+.notif-wa input { font-size: .9rem; }
 .notif-filters { display: flex; gap: .35rem; padding: .6rem 1rem; flex-wrap: wrap; border-bottom: 1px solid var(--line); }
 .filter { font: 500 .78rem var(--font); border: 1px solid var(--line-strong); background: var(--surface); color: var(--muted); border-radius: 999px; padding: .2rem .65rem; cursor: pointer; }
 .filter.on { background: var(--ink); color: #fff; border-color: var(--ink); }
@@ -762,3 +764,17 @@ code { background: var(--surface-2); border-radius: 5px; padding: .05rem .3rem; 
   .summary { grid-template-columns: 1fr; }
   body { background: #fff; }
 }
+
+/* WhatsApp Business Cloud API */
+.wa-api { display: flex; justify-content: space-between; align-items: center; gap: .75rem; flex-wrap: wrap; padding: .7rem .9rem; margin: .75rem 0; border-radius: 12px; border: 1px solid var(--line); background: var(--surface-2); }
+.wa-api p { margin: 0; }
+.wa-api.off { justify-content: flex-start; gap: 0; color: var(--muted); }
+.wa-api .dot { display: inline-block; width: .55rem; height: .55rem; border-radius: 50%; margin-right: .45rem; background: #9ca3af; vertical-align: middle; }
+.wa-api.on { border-color: #25d36655; background: color-mix(in srgb, #25d366 8%, var(--surface)); }
+.wa-api.on .dot { background: #25d366; }
+.wa-btn { background: #128c4b; color: #fff; border: 0; }
+.wa-btn:hover:not(:disabled) { background: #0e7a40; }
+.wa-status { display: inline-block; margin-top: .2rem; font-size: .72rem; font-weight: 600; color: var(--muted); }
+.wa-status.delivered, .wa-status.sent { color: #128c4b; }
+.wa-status.read { color: #2563eb; }
+.wa-status.failed { color: #b42318; }

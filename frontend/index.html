@@ -50,6 +50,9 @@
             <button type="button" class="filter" data-filter="low" aria-pressed="false">Low</button>
           </div>
           <ul id="notif-list" class="notif-list"></ul>
+          <label id="notif-wa" class="notif-wa" hidden>Your WhatsApp number (for reminders)
+            <input id="notif-phone" type="tel" inputmode="tel" autocomplete="tel" maxlength="24"
+              pattern="\+?[0-9 \(\)\-]{6,24}" placeholder="+91 98765 43210"></label>
           <div class="notif-foot">
             <button id="notif-desktop" class="btn ghost sm" type="button">Enable desktop alerts</button>
             <button id="notif-show-read" class="link-btn" type="button">Show dismissed</button>

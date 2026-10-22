@@ -51,6 +51,18 @@ Utsav installs like a native app on Android, iPhone and desktop. It has a home-s
 - Phones need an **HTTPS** deployment (Vercel or Cloud Run) to install; `localhost` only works on the same computer.
 - **For the App Store / Play Store:** wrap the deployed app with Capacitor (`npx cap add ios android`). No rewrite is needed.
 
+## WhatsApp Business (Cloud API)
+Without credentials, Utsav labels WhatsApp Business **not connected** and uses one-tap `wa.me` links: per guest, copy-all, and *WhatsApp* on every notification. To send directly:
+
+1. In Meta for Developers, create an app with the WhatsApp product. Note the **phone number ID**, a **permanent access token** (system user) and the **app secret**.
+2. In WhatsApp Manager, create two templates (category *Utility* or *Marketing*, language `en`):
+   - `utsav_invite`, with an **Image** header and this body: `You're invited to {{1}} 🎉` / `{{2}}` / `Date: {{3}}` / `Reply to this message to RSVP.`
+   - `utsav_reminder`, with this body: `Utsav reminder for {{1}}: {{2}}`
+3. Set `WHATSAPP_TOKEN`, `WHATSAPP_PHONE_NUMBER_ID`, `WHATSAPP_APP_SECRET` and `WHATSAPP_VERIFY_TOKEN` (see `.env.example`).
+4. Point the webhook at `https://<your-host>/api/whatsapp/webhook` (same verify token) and subscribe to `messages`.
+
+**Invites → Send on WhatsApp** uploads the AI poster (or the invite card) once, sends every guest a personalised template in parallel, and shows each guest as *Sent → Delivered → Read* or *Failed*. Guests already reached are skipped on re-send, and webhooks are HMAC-verified and never move a status backwards. **🔔 → Send to my WhatsApp** sends the host that event's five most urgent alerts.
+
 ## Security
 - Passwords use PBKDF2-SHA256 (210k iterations). Sessions are random tokens and only their SHA-256 hash is stored. The session cookie is httpOnly and SameSite=Lax.
 - Each user can only reach their own events. Other users' events return 404, so event ids don't leak.
@@ -74,7 +86,7 @@ Open http://localhost:8101.
 ## Tests
 
 ```bash
-.venv/bin/python -m pytest -q   # 74 tests, offline and deterministic
+.venv/bin/python -m pytest -q   # 81 tests, offline and deterministic
 .venv/bin/ruff check .
 ```
 The tests cover rupee formatting, exact budget allocation, task status, health scoring, overspend penalties, ICS output, auth, rate limiting, isolation between users, input validation, model-output validation, the Gemini path (mocked) and the offline fallbacks.

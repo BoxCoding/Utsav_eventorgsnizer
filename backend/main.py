@@ -10,7 +10,7 @@ from fastapi.staticfiles import StaticFiles
 
 from .app import auth, store
 from .app.config import ROOT, settings
-from .app.routers import events
+from .app.routers import events, whatsapp
 
 logging.basicConfig(level=logging.INFO)
 
@@ -83,4 +83,5 @@ async def versioned_asset(build: str, path: str) -> FileResponse:
 app.include_router(auth.router)
 app.include_router(events.router)
 app.include_router(events.notifications_router)
+app.include_router(whatsapp.router)
 app.mount("/", StaticFiles(directory=FRONTEND, html=True), name="frontend")

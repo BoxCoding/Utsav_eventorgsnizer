@@ -1,5 +1,5 @@
 // Invites: three AI concepts, AI-painted artwork, and bulk WhatsApp / email sharing.
-import { api } from './api.js';
+import { api, whatsappStatus } from './api.js';
 import { $, esc, toast } from './dom.js';
 import { drawDesign, loadFonts } from './invite-art.js';
 
@@ -61,6 +61,23 @@ function formHtml(event) {
     </form>`;
 }
 
+const WA_STATUS = { sent: '✓ Sent', delivered: '✓✓ Delivered', read: '✓✓ Read', failed: '⚠ Failed' };
+
+function waBusinessHtml(guests) {
+  const phones = guests.filter((g) => g.phone).length;
+  if (!ctx.waConnected) {
+    return `<p class="wa-api off small"><span class="dot" aria-hidden="true"></span>WhatsApp Business API not connected. Using one-tap WhatsApp links below.</p>`;
+  }
+  const pending = guests.filter((g) => g.phone && !['sent', 'delivered', 'read'].includes(g.wa_status)).length;
+  return `
+    <div class="wa-api on">
+      <p class="small"><span class="dot" aria-hidden="true"></span><strong>WhatsApp Business connected.</strong>
+        Sends the ${ctx.art.has(`${ctx.concept}-poster`) ? 'AI poster' : 'invite card'} with each guest's personal message, then tracks delivery and reads.</p>
+      <button class="btn wa-btn sm" type="button" id="wa-api-send" ${pending && !ctx.waSending ? '' : 'disabled'}>
+        ${ctx.waSending ? '<span class="spinner" aria-hidden="true"></span> Sending…' : `📲 Send to ${pending} of ${phones} on WhatsApp`}</button>
+    </div>`;
+}
+
 function guestsHtml(event) {
   const guests = event.guest_list || [];
   const sent = guests.filter((g) => g.sent_wa || g.sent_email).length;
@@ -81,6 +98,7 @@ function guestsHtml(event) {
         </div>
       </div>
       ${guests.length ? `
+      ${waBusinessHtml(guests)}
       <div class="bulk-bar">
         <button class="btn primary sm" type="button" id="bulk-email">✉ Email all (BCC)</button>
         <button class="btn ghost sm" type="button" id="bulk-wa">Copy all WhatsApp messages</button>
@@ -91,7 +109,8 @@ function guestsHtml(event) {
           <li>
             <span class="g-avatar" aria-hidden="true">${esc(g.name.slice(0, 1).toUpperCase())}</span>
             <div class="g-main"><strong>${esc(g.name)}</strong>
-              <span class="muted small">${esc([g.email, g.phone].filter(Boolean).join(' · ') || 'No contact')}</span></div>
+              <span class="muted small">${esc([g.email, g.phone].filter(Boolean).join(' · ') || 'No contact')}</span>
+              ${g.wa_status ? `<span class="wa-status ${g.wa_status}">${WA_STATUS[g.wa_status]}</span>` : ''}</div>
             <button type="button" class="send wa ${g.sent_wa ? 'sent' : ''}" data-send="wa" data-i="${i}" ${g.phone ? '' : 'disabled'}
               aria-label="WhatsApp ${esc(g.name)}">${g.sent_wa ? '✓ ' : ''}WhatsApp</button>
             <button type="button" class="send em ${g.sent_email ? 'sent' : ''}" data-send="email" data-i="${i}" ${g.email ? '' : 'disabled'}
@@ -271,6 +290,12 @@ export function renderInvites(event) {
     posterFailed: sameInvite ? ctx.posterFailed : new Set(),
   };
   renderBody();
+  whatsappStatus().then((on) => {
+    if (on !== Boolean(ctx.waConnected)) {
+      ctx.waConnected = on;
+      renderBody();
+    }
+  });
   if (event.invite?.concepts && !sameInvite) {
     // Artwork painted in an earlier session is stored server-side.
     api('GET', `/api/events/${event.id}/invite/art`).then(({ art }) => {
@@ -318,6 +343,27 @@ function canvasFile(id, name) {
 }
 
 // ── actions ───────────────────────────────────────────────────────────────
+async function sendViaWhatsApp() {
+  const { event } = ctx;
+  const poster = ctx.art.has(`${ctx.concept}-poster`);
+  const body = { message: messages().wa, country_code: $('#guest-cc').value, concept: ctx.concept,
+    image: poster ? 'poster' : 'card' };
+  if (!poster) body.card_png = $('#cv-invite').toDataURL('image/png').split(',')[1];
+  ctx.waSending = true;
+  renderBody();
+  try {
+    const res = await api('POST', `/api/events/${event.id}/whatsapp/invite`, body);
+    event.guest_list = res.guest_list;
+    toast(res.failed ? `Sent ${res.sent}; ${res.failed} failed: ${res.errors.join('; ')}`
+      : `Sent to ${res.sent} guest${res.sent === 1 ? '' : 's'} on WhatsApp ✓`);
+  } catch (err) {
+    toast(err.message);
+  } finally {
+    ctx.waSending = false;
+    if (ctx.event.id === event.id) renderBody();
+  }
+}
+
 function messages() {
   return { subject: $('#msg-subject').value, email: $('#msg-email').value, wa: $('#msg-wa').value };
 }
@@ -430,6 +476,8 @@ export function bindInvites(save) {
       const all = event.guest_list.filter((g) => g.phone)
         .map((g) => `${g.name} (${g.phone}): ${waLink(g, m.wa, cc)}\n${personalise(m.wa, g)}`).join('\n\n');
       copy(all, 'All WhatsApp messages copied, each with its send link');
+    } else if (btn.id === 'wa-api-send') {
+      sendViaWhatsApp();
     } else if (btn.id === 'bulk-csv') {
       const m = messages();
       const cc = $('#guest-cc').value;

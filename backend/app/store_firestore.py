@@ -152,6 +152,20 @@ def delete_event(user_id: int, event_id: int) -> bool:
     return True
 
 
+# ── WhatsApp message ids -> event ───────────────────────────────────────
+def record_wa(user_id: int, event_id: int, message_ids: list[str]) -> None:
+    batch = db().batch()
+    for m in message_ids:
+        batch.set(db().collection("wa_messages").document(m),
+                  {"user_id": user_id, "event_id": event_id})
+    batch.commit()
+
+
+def wa_owner(message_id: str) -> tuple[int, int] | None:
+    snap = db().collection("wa_messages").document(message_id).get()
+    return (snap.to_dict()["user_id"], snap.to_dict()["event_id"]) if snap.exists else None
+
+
 # ── AI artwork, chunked ─────────────────────────────────────────────────
 def _art(event_id: int) -> Any:
     return db().collection("events").document(str(event_id)).collection("art")

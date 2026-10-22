@@ -36,6 +36,17 @@ class Settings:
     )
     # "sqlite" (local/dev/tests) or "firestore" (production: survives redeploys and scales)
     store: str = field(default_factory=lambda: _env("UTSAV_STORE", "sqlite"))
+    # WhatsApp Business Cloud API; empty token = "not connected" (one-tap links only)
+    whatsapp_token: str = field(default_factory=lambda: _env("WHATSAPP_TOKEN"))
+    whatsapp_phone_id: str = field(default_factory=lambda: _env("WHATSAPP_PHONE_NUMBER_ID"))
+    whatsapp_app_secret: str = field(default_factory=lambda: _env("WHATSAPP_APP_SECRET"))
+    whatsapp_verify_token: str = field(default_factory=lambda: _env("WHATSAPP_VERIFY_TOKEN"))
+    whatsapp_invite_template: str = field(
+        default_factory=lambda: _env("WHATSAPP_INVITE_TEMPLATE", "utsav_invite"))
+    whatsapp_reminder_template: str = field(
+        default_factory=lambda: _env("WHATSAPP_REMINDER_TEMPLATE", "utsav_reminder"))
+    whatsapp_lang: str = field(default_factory=lambda: _env("WHATSAPP_TEMPLATE_LANG", "en"))
+    whatsapp_api_version: str = field(default_factory=lambda: _env("WHATSAPP_API_VERSION", "v21.0"))
     llm_timeout_seconds: float = 30.0
     image_timeout_seconds: float = 120.0
 

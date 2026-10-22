@@ -72,6 +72,8 @@ class Guest(BaseModel):
     phone: str = Field(default="", max_length=24, pattern=r"^$|^\+?[0-9 ()-]{6,24}$")
     sent_wa: bool = False
     sent_email: bool = False
+    wa_id: str = Field(default="", max_length=200)  # Cloud API message id, for delivery status
+    wa_status: Literal["", "sent", "delivered", "read", "failed"] = ""
 
 
 class EventPatch(BaseModel):
@@ -132,3 +134,21 @@ class Turn(BaseModel):
 class AskRequest(BaseModel):
     question: str = Field(min_length=1, max_length=500)
     history: list[Turn] = Field(default_factory=list, max_length=6)
+
+
+COUNTRY_CODE = Field(default="+91", pattern=r"^\+?[0-9]{1,4}$")
+
+
+class WaInviteRequest(BaseModel):
+    message: str = Field(min_length=1, max_length=900)  # concept text; {name} = first name
+    country_code: str = COUNTRY_CODE
+    only_unsent: bool = True
+    # The image header: the stored AI poster, or the card the browser composed (PNG, base64)
+    image: Literal["poster", "card"] = "poster"
+    card_png: str = Field(default="", max_length=8_000_000)
+    concept: int = Field(default=0, ge=0, le=2)
+
+
+class WaRemindRequest(BaseModel):
+    phone: str = Field(pattern=r"^\+?[0-9 ()-]{6,24}$")
+    country_code: str = COUNTRY_CODE

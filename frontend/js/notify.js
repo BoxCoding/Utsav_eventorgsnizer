@@ -1,5 +1,5 @@
 // Notification centre: bell + panel, read state, share, and opt-in desktop alerts.
-import { api } from './api.js';
+import { api, whatsappStatus } from './api.js';
 import { $, esc, toast } from './dom.js';
 
 const URGENT = new Set(['critical', 'high']);
@@ -8,6 +8,7 @@ const REFRESH_MS = 5 * 60 * 1000;
 let items = [];
 let filter = 'all';
 let showRead = false;
+let waConnected = false;
 
 // Read/pushed ids are per-viewer conveniences: browser storage, failure-tolerant.
 function loadSet(key) {
@@ -56,6 +57,8 @@ function render() {
         <div class="notif-actions">
           <button type="button" class="link-btn" data-act="open" data-id="${esc(n.id)}">Open</button>
           <button type="button" class="link-btn" data-act="share" data-id="${esc(n.id)}">Share</button>
+          <button type="button" class="link-btn" data-act="wa-share" data-id="${esc(n.id)}">WhatsApp</button>
+          ${waConnected ? `<button type="button" class="link-btn" data-act="wa-me" data-id="${esc(n.id)}">📲 Send to my WhatsApp</button>` : ''}
           ${read.has(n.id) ? '' : `<button type="button" class="link-btn" data-act="dismiss" data-id="${esc(n.id)}">Dismiss</button>`}
         </div>
       </li>`).join('')
@@ -103,7 +106,7 @@ function open(n) {
 }
 
 async function share(n) {
-  const text = `${n.title}: ${n.message} (${n.event_name}, via Utsav)`;
+  const text = reminderText(n);
   try {
     if (navigator.share) {
       await navigator.share({ title: 'Utsav reminder', text });
@@ -116,6 +119,29 @@ async function share(n) {
   }
 }
 
+function reminderText(n) {
+  return `${n.title}: ${n.message} (${n.event_name}, via Utsav)`;
+}
+
+async function whatsappMe(n) {
+  const input = $('#notif-phone');
+  const phone = input.value.trim();
+  if (!input.checkValidity() || !phone) {
+    input.focus();
+    toast('Add your WhatsApp number below first');
+    return;
+  }
+  try {
+    localStorage.setItem('utsav:wa-phone', phone);
+  } catch { /* storage unavailable: asked again next time */ }
+  try {
+    const { sent } = await api('POST', `/api/events/${n.event_id}/whatsapp/remind`, { phone });
+    toast(`Sent ${sent} reminder${sent === 1 ? '' : 's'} for ${n.event_name} to your WhatsApp`);
+  } catch (err) {
+    toast(err.message);
+  }
+}
+
 export async function refreshNotifications() {
   if ($('#user-box').hidden) return; // signed out
   try {
@@ -123,12 +149,17 @@ export async function refreshNotifications() {
   } catch {
     return; // signed out or offline: keep the last known list
   }
+  waConnected = await whatsappStatus();
+  $('#notif-wa').hidden = !waConnected;
   render();
   pushDesktop();
 }
 
 export function bindNotifications() {
   syncDesktopButton();
+  try {
+    $('#notif-phone').value = localStorage.getItem('utsav:wa-phone') || '';
+  } catch { /* storage unavailable */ }
   $('#bell').addEventListener('click', () => setOpen($('#notif-panel').hidden));
   document.addEventListener('click', (e) => {
     if (!e.target.closest('.notif-wrap')) setOpen(false);
@@ -154,6 +185,10 @@ export function bindNotifications() {
     const n = items.find((x) => x.id === btn.dataset.id);
     if (btn.dataset.act === 'open' && n) open(n);
     if (btn.dataset.act === 'share' && n) share(n);
+    if (btn.dataset.act === 'wa-share' && n) {
+      window.open(`https://wa.me/?text=${encodeURIComponent(reminderText(n))}`, '_blank', 'noopener');
+    }
+    if (btn.dataset.act === 'wa-me' && n) whatsappMe(n);
     if (btn.dataset.act === 'dismiss' && n) {
       read.add(n.id);
       saveSet('utsav:read', read);
