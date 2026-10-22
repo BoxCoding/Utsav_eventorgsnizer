@@ -8,6 +8,9 @@ Security properties:
     which also shields it from any injected script.
   * Every data route resolves the user from the session and filters queries
     by user_id (user-data isolation).
+  * The native app (bundled web assets, a different origin) can't use the cookie, so it
+    asks for the token once at sign-in (X-Utsav-Client: native) and sends it as a bearer
+    header. Bearer headers are never attached automatically, so this adds no CSRF risk.
 """
 from __future__ import annotations
 
@@ -18,7 +21,7 @@ import time
 from collections import defaultdict, deque
 from datetime import datetime, timedelta, timezone
 
-from fastapi import APIRouter, Cookie, HTTPException, Response
+from fastapi import APIRouter, Cookie, Header, HTTPException, Response
 
 from . import store
 from .config import settings
@@ -51,7 +54,7 @@ def _hash_token(token: str) -> str:
     return hashlib.sha256(token.encode()).hexdigest()
 
 
-def _start_session(response: Response, user_id: int) -> None:
+def _start_session(response: Response, user_id: int) -> str:
     token = secrets.token_urlsafe(32)
     expires_at = datetime.now(timezone.utc) + SESSION_TTL
     store.create_session(_hash_token(token), user_id, expires_at.strftime("%Y-%m-%d %H:%M:%S"))
@@ -63,6 +66,21 @@ def _start_session(response: Response, user_id: int) -> None:
         secure=settings.cookie_secure,
         samesite="lax",
     )
+    return token
+
+
+def _token(cookie: str | None, authorization: str | None) -> str | None:
+    if cookie:
+        return cookie
+    scheme, _, value = (authorization or "").partition(" ")
+    if scheme.lower() != "bearer":
+        return None
+    return value.strip() or None
+
+
+def _signed_in(user: dict, token: str, client: str | None) -> dict:
+    """Only the native app is handed its token; the web keeps it in the httpOnly cookie."""
+    return {"user": _public(user), **({"token": token} if client == "native" else {})}
 
 
 def _public(user: dict) -> dict:
@@ -71,30 +89,39 @@ def _public(user: dict) -> dict:
 
 async def current_user(
     utsav_session: str | None = Cookie(default=None, alias=COOKIE_NAME),
+    authorization: str | None = Header(default=None),
 ) -> dict:
     """FastAPI dependency: resolve the signed-in user or reject with 401."""
-    if not utsav_session:
+    token = _token(utsav_session, authorization)
+    if not token:
         raise HTTPException(status_code=401, detail="sign in required")
-    user = store.get_session_user(_hash_token(utsav_session))
+    user = store.get_session_user(_hash_token(token))
     if user is None:
         raise HTTPException(status_code=401, detail="session expired — sign in again")
     return user
 
 
 @router.post("/register", status_code=201)
-async def register(payload: RegisterRequest, response: Response) -> dict:
+async def register(
+    payload: RegisterRequest, response: Response,
+    x_utsav_client: str | None = Header(default=None),
+) -> dict:
     if store.get_user_by_email(payload.email) is not None:
         raise HTTPException(status_code=409, detail="an account with this email already exists")
     salt = secrets.token_bytes(16)
     user_id = store.create_user(
         payload.name, payload.email, _hash_password(payload.password, salt), salt.hex()
     )
-    _start_session(response, user_id)
-    return {"user": {"id": user_id, "name": payload.name, "email": payload.email}}
+    token = _start_session(response, user_id)
+    user = {"id": user_id, "name": payload.name, "email": payload.email}
+    return _signed_in(user, token, x_utsav_client)
 
 
 @router.post("/login")
-async def login(payload: LoginRequest, response: Response) -> dict:
+async def login(
+    payload: LoginRequest, response: Response,
+    x_utsav_client: str | None = Header(default=None),
+) -> dict:
     if _rate_limited(payload.email):
         raise HTTPException(status_code=429, detail="too many attempts — wait a minute")
     user = store.get_user_by_email(payload.email)
@@ -104,8 +131,8 @@ async def login(payload: LoginRequest, response: Response) -> dict:
         expected = user["password_hash"]
         candidate = _hash_password(payload.password, bytes.fromhex(user["salt"]))
         if hmac.compare_digest(candidate, expected):
-            _start_session(response, user["id"])
-            return {"user": _public(user)}
+            token = _start_session(response, user["id"])
+            return _signed_in(user, token, x_utsav_client)
     raise HTTPException(status_code=401, detail="invalid email or password")
 
 
@@ -113,9 +140,11 @@ async def login(payload: LoginRequest, response: Response) -> dict:
 async def logout(
     response: Response,
     utsav_session: str | None = Cookie(default=None, alias=COOKIE_NAME),
+    authorization: str | None = Header(default=None),
 ) -> dict:
-    if utsav_session:
-        store.delete_session(_hash_token(utsav_session))
+    token = _token(utsav_session, authorization)
+    if token:
+        store.delete_session(_hash_token(token))
     response.delete_cookie(COOKIE_NAME)
     return {"ok": True}
 
@@ -123,22 +152,25 @@ async def logout(
 @router.get("/me")
 async def me(
     utsav_session: str | None = Cookie(default=None, alias=COOKIE_NAME),
+    authorization: str | None = Header(default=None),
 ) -> dict:
     """Strict variant: 401 when unauthenticated (used by API clients)."""
-    user = await current_user(utsav_session)
+    user = await current_user(utsav_session, authorization)
     return {"user": _public(user)}
 
 
 @router.get("/session")
 async def session(
     utsav_session: str | None = Cookie(default=None, alias=COOKIE_NAME),
+    authorization: str | None = Header(default=None),
 ) -> dict:
     """Boot probe for the browser: always 200, `user` is null when signed out.
 
     Being signed out is a normal state, not an error — answering 200 keeps a
     first-time visitor's console completely clean instead of logging a 401.
     """
-    if not utsav_session:
+    token = _token(utsav_session, authorization)
+    if not token:
         return {"user": None}
-    user = store.get_session_user(_hash_token(utsav_session))
+    user = store.get_session_user(_hash_token(token))
     return {"user": _public(user) if user else None}

@@ -1,5 +1,5 @@
 // Boot + hash routing: #/ (home) and #/event/<id>.
-import { api } from './api.js';
+import { NATIVE, api, forgetDevice, syncOffline } from './api.js';
 import { bindAuth } from './auth.js';
 import { $, showView, toast } from './dom.js';
 import { bindEventView, openEvent, showTab } from './event.js';
@@ -51,7 +51,8 @@ async function boot() {
   bindNotifications();
 
   $('#logout-btn').addEventListener('click', async () => {
-    await api('POST', '/api/auth/logout');
+    await api('POST', '/api/auth/logout').catch(() => {}); // offline: the token expires on its own
+    await forgetDevice();
     setUser(null);
     location.hash = '#/';
     route();
@@ -63,20 +64,35 @@ async function boot() {
     route();
   });
   window.addEventListener('hashchange', route);
+  window.addEventListener('utsav:connectivity', ({ detail }) => {
+    const bar = $('#offline-bar');
+    bar.hidden = detail.online && !detail.pending;
+    bar.textContent = detail.online
+      ? `Syncing ${detail.pending} change${detail.pending === 1 ? '' : 's'}…`
+      : `Offline · showing plans saved on this device${detail.pending ? ` · ${detail.pending} change${detail.pending === 1 ? '' : 's'} will sync` : ''}`;
+  });
+  window.addEventListener('online', async () => {
+    if (await syncOffline()) {
+      toast('Back online: your offline changes are saved');
+      if (user) route();
+    }
+  });
 
   const [health, session] = await Promise.all([
-    api('GET', '/api/health').catch(() => ({ llm: 'offline' })),
+    api('GET', '/api/health').catch(() => ({ llm: 'unreachable' })),
     api('GET', '/api/auth/session').catch(() => ({ user: null })),
   ]);
   const status = $('#ai-status');
-  status.textContent = health.llm === 'gemini' ? '● Gemini' : '● Offline mode';
+  status.textContent = { gemini: '● Gemini', unreachable: '● No connection' }[health.llm] || '● Offline mode';
   status.classList.add(health.llm === 'gemini' ? 'ok' : 'warn');
   setUser(session.user);
+  if (session.user) await syncOffline();
   route();
 }
 
 // ── installable app (PWA) ──
-if ('serviceWorker' in navigator) {
+document.documentElement.classList.toggle('native', NATIVE);
+if ('serviceWorker' in navigator && !NATIVE) { // the app bundles its files already
   window.addEventListener('load', () => navigator.serviceWorker.register('/sw.js').catch(() => {}));
 }
 let installPrompt = null;

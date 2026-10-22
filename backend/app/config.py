@@ -47,6 +47,10 @@ class Settings:
         default_factory=lambda: _env("WHATSAPP_REMINDER_TEMPLATE", "utsav_reminder"))
     whatsapp_lang: str = field(default_factory=lambda: _env("WHATSAPP_TEMPLATE_LANG", "en"))
     whatsapp_api_version: str = field(default_factory=lambda: _env("WHATSAPP_API_VERSION", "v21.0"))
+    # Origins of the bundled native apps (Capacitor Android / iOS) allowed to call the API
+    app_origins: tuple[str, ...] = field(default_factory=lambda: tuple(
+        o.strip() for o in _env("UTSAV_APP_ORIGINS", "https://localhost,capacitor://localhost")
+        .split(",") if o.strip()))
     llm_timeout_seconds: float = 30.0
     image_timeout_seconds: float = 120.0
 

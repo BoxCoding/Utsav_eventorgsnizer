@@ -820,6 +820,13 @@ h1 { font-weight: 800; }
 .showcase-list { list-style: none; padding: 0; margin: 1rem 0 0; display: grid; gap: .9rem; color: rgb(255 255 255 / 80%); }
 .showcase-list strong { color: #fff; }
 
+/* Installed app: offline banner; browser-only actions hidden in the native shell */
+.offline-bar {
+  position: sticky; top: 57px; z-index: 19; padding: .5rem 1rem; text-align: center; font-size: .82rem; font-weight: 600;
+  color: #713f12; background: #fef3c7; border-bottom: 1px solid #fde68a;
+}
+.native #ics-link, .native #print-btn, .native #install-btn { display: none; }
+
 @media (max-width: 900px) {
   .auth-layout, .summary { grid-template-columns: 1fr; }
   .auth-layout { gap: 2rem; min-height: auto; }

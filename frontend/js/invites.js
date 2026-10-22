@@ -1,5 +1,5 @@
 // Invites: three AI concepts, AI-painted artwork, and bulk WhatsApp / email sharing.
-import { api, whatsappStatus } from './api.js';
+import { api, imageUrl, whatsappStatus } from './api.js';
 import { $, esc, toast } from './dom.js';
 import { drawDesign, loadFonts } from './invite-art.js';
 
@@ -150,7 +150,7 @@ function posterHtml(c) {
   const key = `${ctx.concept}-poster`;
   const has = ctx.art.has(key);
   const body = has
-    ? `<img id="poster-img" src="/api/events/${ctx.event.id}/invite/art/${key}?v=${ctx.art.get(key)}" alt="AI poster: ${esc(ctx.event.name)}, ${esc(c.headline)}">`
+    ? `<img id="poster-img" data-src="/api/events/${ctx.event.id}/invite/art/${key}?v=${ctx.art.get(key)}" alt="AI poster: ${esc(ctx.event.name)}, ${esc(c.headline)}">`
     : `<div class="poster-empty">${ctx.painting
       ? '<span class="spinner" aria-hidden="true"></span><p>Gemini is illustrating your poster and proof-reading every detail…</p>'
       : ctx.posterFailed.has(ctx.concept)
@@ -236,7 +236,8 @@ function loadImage(key) {
     const img = new Image();
     img.onload = () => resolve(img);
     img.onerror = () => resolve(null);
-    img.src = `/api/events/${ctx.event.id}/invite/art/${key}?v=${ctx.art.get(key)}`;
+    imageUrl(`/api/events/${ctx.event.id}/invite/art/${key}?v=${ctx.art.get(key)}`)
+      .then((url) => { img.src = url; }, () => resolve(null));
   });
   ctx.images.set(key, p);
   return p;
@@ -254,6 +255,8 @@ async function drawAll() {
     if (canvas) drawDesign(canvas, fmt, c, f, img);
   }
   for (const el of $('#panel-invites').querySelectorAll('[data-color]')) el.style.background = el.dataset.color;
+  const poster = $('#poster-img');
+  if (poster) imageUrl(poster.dataset.src).then((url) => { poster.src = url; }, () => {});
 }
 
 function renderBody() {

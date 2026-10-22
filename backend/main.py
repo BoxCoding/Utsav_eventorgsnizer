@@ -4,6 +4,7 @@ from __future__ import annotations
 import logging
 
 from fastapi import FastAPI, HTTPException, Request
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
@@ -24,6 +25,12 @@ CSP = (
 store.init_db()  # at import, not lifespan: serverless runtimes may skip lifespan events
 app = FastAPI(title="Utsav", version="1.0.0")
 app.add_middleware(GZipMiddleware, minimum_size=800)
+# Only the native app shells; the web app is same-origin. No cookies cross origins.
+app.add_middleware(
+    CORSMiddleware, allow_origins=list(settings.app_origins), allow_credentials=False,
+    allow_methods=["GET", "POST", "PATCH", "DELETE"],
+    allow_headers=["Authorization", "Content-Type", "X-Utsav-Client"], max_age=86400,
+)
 
 
 @app.middleware("http")

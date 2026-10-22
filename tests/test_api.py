@@ -583,3 +583,32 @@ def test_large_artwork_round_trips(client, monkeypatch):
     client.post(f"/api/events/{event_id}/invite/art", json={"concept": 0, "format": "invite"})
     assert client.get(f"/api/events/{event_id}/invite/art/0-invite").content == big
     assert client.delete(f"/api/events/{event_id}").status_code == 204
+
+
+def test_native_app_signs_in_with_a_bearer_token():
+    app_client = TestClient(app)
+    web = app_client.post("/api/auth/register", json={
+        "name": "Web", "email": "web-only@example.com", "password": "s3cret-pass"})
+    assert "token" not in web.json()  # the web keeps its session in the httpOnly cookie
+    native = TestClient(app)
+    r = native.post("/api/auth/login", headers={"X-Utsav-Client": "native"},
+                    json={"email": "web-only@example.com", "password": "s3cret-pass"})
+    token = r.json()["token"]
+    native.cookies.clear()  # the app's origin can't use the cookie
+    bearer = {"Authorization": f"Bearer {token}"}
+    assert native.get("/api/auth/me").status_code == 401
+    assert native.get("/api/auth/me", headers=bearer).json()["user"]["name"] == "Web"
+    assert native.post("/api/events", json=event_payload(), headers=bearer).status_code == 201
+    assert native.get("/api/auth/me", headers={"Authorization": "Basic abc"}).status_code == 401
+    native.post("/api/auth/logout", headers=bearer)
+    assert native.get("/api/auth/me", headers=bearer).status_code == 401
+
+
+def test_cors_allows_only_the_app_shells():
+    c = TestClient(app)
+    preflight = {"Access-Control-Request-Method": "PATCH",
+                 "Access-Control-Request-Headers": "authorization,content-type"}
+    ok = c.options("/api/events/1", headers={"Origin": "https://localhost", **preflight})
+    assert ok.headers["access-control-allow-origin"] == "https://localhost"
+    bad = c.options("/api/events/1", headers={"Origin": "https://evil.example", **preflight})
+    assert "access-control-allow-origin" not in bad.headers
