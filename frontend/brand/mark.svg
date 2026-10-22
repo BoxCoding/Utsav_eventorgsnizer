@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Utsav">
+  <defs>
+    <linearGradient id="ug" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#5B21B6"/>
+      <stop offset=".55" stop-color="#C026D3"/>
+      <stop offset="1" stop-color="#F59E0B"/>
+    </linearGradient>
+    <radialGradient id="uglow" cx=".72" cy=".28" r=".55">
+      <stop offset="0" stop-color="#fff" stop-opacity=".32"/>
+      <stop offset="1" stop-color="#fff" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <rect width="64" height="64" rx="18" fill="url(#ug)"/>
+  <rect width="64" height="64" rx="18" fill="url(#uglow)"/>
+  <g transform="translate(-1.5 3)">
+  <path d="M19 16.5v17a13 13 0 0 0 26 0v-3" fill="none" stroke="#fff" stroke-width="7" stroke-linecap="round"/>
+  <path d="M45 6.5c1 6.3 3.2 8.6 9.5 9.5-6.3 1-8.5 3.2-9.5 9.5-1-6.3-3.2-8.5-9.5-9.5 6.3-.9 8.5-3.2 9.5-9.5z" fill="#FFF1C7"/>
+  <circle cx="35.5" cy="7.5" r="1.8" fill="#fff" fill-opacity=".7"/>
+  </g>
+</svg>

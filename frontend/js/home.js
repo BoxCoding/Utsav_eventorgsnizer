@@ -9,6 +9,13 @@ export async function renderHome() {
   $('#ev-date').min = todayIso();
   const list = $('#event-list');
   const { events } = await api('GET', '/api/events');
+  const upcoming = events.filter((ev) => ev.days_left >= 0);
+  const next = upcoming.reduce((a, ev) => (!a || ev.days_left < a.days_left ? ev : a), null);
+  const done = events.length ? Math.round(100 * events.reduce((s, ev) => s + ev.progress, 0) / events.length) : 0;
+  $('#home-stats').innerHTML = `
+    <div><dt>Upcoming</dt><dd>${upcoming.length}</dd></div>
+    <div><dt>${next ? `<abbr title="${esc(next.name)}">Next event</abbr>` : 'Next event'}</dt><dd>${next ? `${next.days_left}<small> days</small>` : '–'}</dd></div>
+    <div><dt>Tasks done</dt><dd>${done}<small>%</small></dd></div>`;
   list.innerHTML = events.length
     ? events.map((ev) => `
       <li>
