@@ -10,3 +10,6 @@ __pycache__/
 .ruff_cache/
 utsav.db*
 mobile/
+node_modules/
+marketing/
+tests/

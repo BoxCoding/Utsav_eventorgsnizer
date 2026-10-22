@@ -10,3 +10,5 @@ __pycache__
 .git
 deploy
 mobile
+node_modules
+marketing

@@ -117,7 +117,7 @@ npm install && npm test          # frontend unit tests;  npm run lint;  npm run 
 The tests cover rupee formatting, exact budget allocation, task status, health scoring, overspend penalties, ICS output, auth, rate limiting, isolation between users, input validation, model-output validation, the Gemini path (mocked) and the offline fallbacks.
 
 ## Deploy (Cloud Run): live demo
-`PROJECT_ID=<project> deploy/cloudrun.sh` builds the `Dockerfile` with Cloud Build, stores the Gemini key from `.env` in Secret Manager, and deploys one always-warm instance in asia-south1. It's live at **https://utsav-242709395679.asia-south1.run.app**. SQLite lives in the container, so data survives idle periods but **not redeploys**; move to Cloud SQL for production.
+`PROJECT_ID=<project> deploy/cloudrun.sh` builds the `Dockerfile` with Cloud Build, stores the Gemini key from `.env` in Secret Manager, enables Firestore (native mode, asia-south1) and deploys with `UTSAV_STORE=firestore`, so instances are stateless and data survives redeploys and scaling (0–3 instances). Optional WhatsApp credentials in `.env` are also stored as secrets. It's live at **https://utsav-242709395679.asia-south1.run.app**. Local development and tests use SQLite; `scripts/test-firestore.sh` runs the same suite against the Firestore emulator.
 
 ## Deploy (Vercel)
 `vercel.json` serves `frontend/` as static files and `api/index.py` as the Python function. Set `GEMINI_API_KEY` in the project's environment variables. There is deliberately no `pyproject.toml`: Vercel's `uv` builder would ignore `requirements.txt` if one existed. Note that SQLite lives in `/tmp` on Vercel, which is temporary; use a managed database for real users.
