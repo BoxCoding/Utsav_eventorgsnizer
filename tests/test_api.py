@@ -263,8 +263,9 @@ def test_brief_model_output_is_validated():
                {"title": "Hack", "category": "Nope", "lead_days": 1}],
            "split": {"Catering": 0.6}, "summary": ["Big wedding"]}
     out = ai._clean_brief(raw, d(2026, 1, 1))
-    # bad budget, unknown currency and past date are dropped
-    assert out["fields"] == {"kind": "wedding", "guests": 120}
+    # unknown currency and past date are dropped; a bad budget becomes an explained estimate
+    assert out["fields"] == {"kind": "wedding", "guests": 120, "budget": 480_000}
+    assert out["budget_estimate"]["source"] == "utsav"
     assert [t["title"] for t in out["custom_tasks"]] == ["Book a mehndi artist"]
     assert abs(sum(out["split"].values()) - 1) < 0.001
 
@@ -489,3 +490,35 @@ def test_pwa_files_are_served():
     assert sw.status_code == 200 and "javascript" in sw.headers["content-type"]
     page = anon.get("/").text
     assert 'rel="manifest"' in page and "apple-touch-icon" in page
+
+
+def test_blank_budget_is_estimated_not_defaulted(client):
+    payload = event_payload(kind="birthday", guests=40)
+    payload.pop("budget")
+    event = client.post("/api/events", json=payload).json()["event"]
+    assert event["budget"] == 38_000  # 40 guests x ₹600 floor x 1.6 comfort, 2 sig. figures
+    assert "Estimated by Utsav" in event["budget_note"]
+
+
+def test_estimate_endpoint_validates_budgets(client):
+    q = "/api/events/estimate?kind=wedding&guests=200&currency=INR"
+    assert client.get(q).json()["verdict"] == "missing"
+    assert client.get(q + "&budget=100000").json()["verdict"] == "too-low"   # ₹500/guest
+    assert client.get(q + "&budget=400000").json()["verdict"] == "tight"     # ₹2,000
+    assert client.get(q + "&budget=1200000").json()["verdict"] == "comfortable"
+    assert client.get(q + "&budget=5000000").json()["verdict"] == "generous"
+    assert client.get(q.replace("200", "0")).status_code == 422
+
+
+def test_brief_budget_estimate_is_validated(monkeypatch):
+    from datetime import date as d
+    base = {"kind": "community", "guests": 400, "summary": ["x"]}
+    ok = ai._clean_brief({**base, "budget_estimate": 150_000, "budget_reasoning": "Food for 400"},
+                         d(2026, 1, 1))
+    assert ok["fields"]["budget"] == 150_000 and ok["budget_estimate"]["source"] == "gemini"
+    absurd = ai._clean_brief({**base, "budget_estimate": 99}, d(2026, 1, 1))
+    assert absurd["budget_estimate"]["source"] == "utsav"  # rule-based, explained
+    assert absurd["fields"]["budget"] == 130_000
+    assert "400 guests" in absurd["budget_estimate"]["reasoning"]
+    stated = ai._clean_brief({**base, "budget": 240_000, "budget_estimate": 1}, d(2026, 1, 1))
+    assert stated["fields"]["budget"] == 240_000 and stated["budget_estimate"] is None

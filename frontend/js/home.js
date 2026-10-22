@@ -1,6 +1,6 @@
 // Event list + the "plan a new event" form.
 import { api } from './api.js';
-import { $, currencyOptions, esc, fmtDate, todayIso, toast } from './dom.js';
+import { $, currencyOptions, debounce, esc, fmtDate, money, todayIso, toast } from './dom.js';
 
 const ICON = { wedding: '💍', birthday: '🎂', community: '🏘️' };
 const HEALTH_CLASS = { 'On track': 'ok', 'Needs attention': 'warn', 'At risk': 'bad' };
@@ -34,7 +34,7 @@ export async function renderHome() {
 }
 
 // Personalisation proposed from the brief, sent with the form on create.
-let extras = { custom_tasks: [], split_override: null, skipped: [] };
+let extras = { custom_tasks: [], split_override: null, skipped: [], budget_note: '' };
 
 const FIELD_INPUTS = {
   name: '#ev-name', event_date: '#ev-date', guests: '#ev-guests', budget: '#ev-budget',
@@ -51,7 +51,9 @@ function showBrief(result) {
       $(sel).classList.add('filled');
     }
   }
-  extras = { custom_tasks: tasks, split_override: split, skipped };
+  const est = result.budget_estimate;
+  extras = { custom_tasks: tasks, split_override: split, skipped,
+    budget_note: est ? `Estimated by ${est.source === 'gemini' ? 'Gemini' : 'Utsav'}: ${est.reasoning}` : '' };
   const missing = ['event_date', 'guests', 'budget'].filter((k) => fields[k] == null);
   const cats = split ? Object.entries(split) : [];
   const box = $('#brief-result');
@@ -64,6 +66,9 @@ function showBrief(result) {
       <ul>${result.suggestions.map((x) => `<li>${esc(x)}</li>`).join('')}</ul></div>` : ''}
     ${tasks.length ? `<p class="br-label">${skipped.length ? `Your checklist: ${tasks.length} tasks written for this event` : `${tasks.length} personalised tasks added to your checklist`}</p>
       <ul class="br-tasks">${tasks.map((t) => `<li><span>${esc(t.title)}</span><small>${esc(t.category)} · ${t.lead_days} days before</small></li>`).join('')}</ul>` : ''}
+    ${est ? `<div class="br-estimate"><p class="br-label">Budget estimated for you</p>
+      <p><strong>${money(est.amount, fields.currency || 'INR')}</strong> · ${esc(est.reasoning)}</p>
+      <p class="muted small">You didn't give a budget, so ${est.source === 'gemini' ? 'Gemini sized it from your requirements' : 'Utsav sized it from your guest count'}. Change it below if you like.</p></div>` : ''}
     ${cats.length ? `<p class="br-label">Budget categories designed for your event</p>
       <div class="br-split">${cats.map(([c, v]) => `<span><b>${Math.round(v * 100)}%</b>${esc(c)}</span>`).join('')}</div>` : ''}
 
@@ -71,10 +76,46 @@ function showBrief(result) {
       : '<p class="br-ok">Details filled in below. Check them (especially the exact date), then build your plan.</p>'}`;
 }
 
+const VERDICT = {
+  'too-low': ['bad', 'Very low for this many guests'],
+  tight: ['warn', 'Tight: possible with careful choices'],
+  comfortable: ['ok', 'Comfortable for this event'],
+  generous: ['ok', 'Generous: room for extras'],
+};
+
+/** Live budget validation: suggest a figure when blank, judge it when entered. */
+async function updateBudgetHint() {
+  const hint = $('#budget-hint');
+  const guests = Number($('#ev-guests').value);
+  if (!guests) { hint.innerHTML = ''; return; }
+  const currency = $('#ev-currency').value || 'INR';
+  const budget = Number($('#ev-budget').value) || 0;
+  const kind = $('#event-form').elements.kind.value;
+  try {
+    const r = await api('GET', `/api/events/estimate?kind=${kind}&guests=${guests}&currency=${currency}${budget ? `&budget=${budget}` : ''}`);
+    const suggestion = `${money(r.estimate, currency)} (${guests} guests × ${money(Math.round(r.estimate / guests), currency)})`;
+    if (r.verdict === 'missing') {
+      hint.innerHTML = `💡 Blank is fine: Utsav will plan with about <strong>${suggestion}</strong>.
+        <button type="button" class="link-btn" data-use="${r.estimate}">Use this</button>`;
+    } else {
+      const [cls, text] = VERDICT[r.verdict];
+      hint.innerHTML = `<span class="chip ${cls}">${text}</span> ${money(r.per_guest, currency)} per guest; typical from ${money(r.benchmark, currency)}.
+        ${r.verdict === 'too-low' ? `<button type="button" class="link-btn" data-use="${r.estimate}">Use ${money(r.estimate, currency)}</button>` : ''}`;
+    }
+  } catch { hint.textContent = ''; }
+}
+
 export function bindEventForm(onCreated) {
   const form = $('#event-form');
   const error = $('#event-error');
   $('#ev-currency').innerHTML = currencyOptions('INR');
+  const checkBudget = debounce(updateBudgetHint, 350);
+  for (const sel of ['#ev-budget', '#ev-guests', '#ev-currency']) $(sel).addEventListener('input', checkBudget);
+  form.addEventListener('change', (e) => { if (e.target.name === 'kind') checkBudget(); });
+  $('#budget-hint').addEventListener('click', (e) => {
+    if (e.target.dataset.use) { $('#ev-budget').value = e.target.dataset.use; updateBudgetHint(); }
+  });
+  updateBudgetHint();
   $('#brief-btn').addEventListener('click', async () => {
     const brief = $('#ev-brief').value.trim();
     if (brief.length < 15) {
@@ -110,7 +151,7 @@ export function bindEventForm(onCreated) {
         kind: form.elements.kind.value,
         event_date: $('#ev-date').value,
         guests: Number($('#ev-guests').value),
-        budget: Number($('#ev-budget').value),
+        budget: Number($('#ev-budget').value) || null, // blank: the server sizes it
         currency: $('#ev-currency').value,
         brief: $('#ev-brief').value.trim(),
         ...extras,
@@ -119,7 +160,7 @@ export function bindEventForm(onCreated) {
         vibe: $('#ev-vibe').value.trim(),
       });
       form.reset();
-      extras = { custom_tasks: [], split_override: null, skipped: [] };
+      extras = { custom_tasks: [], split_override: null, skipped: [], budget_note: '' };
       $('#brief-result').hidden = true;
       for (const el of form.querySelectorAll('.filled')) el.classList.remove('filled');
       onCreated(event.id);

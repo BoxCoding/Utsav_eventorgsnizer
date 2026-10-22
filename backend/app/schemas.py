@@ -47,7 +47,8 @@ class EventIn(BaseModel):
     kind: Kind
     event_date: date
     guests: int = Field(ge=1, le=10_000)
-    budget: int = Field(ge=100, le=10_000_000_000)
+    budget: int | None = Field(default=None, ge=100, le=10_000_000_000)  # None: Utsav estimates
+    budget_note: str = Field(default="", max_length=300)
     currency: Currency = "INR"
     city: str = Field(default="", max_length=80)
     vibe: str = Field(default="", max_length=200)

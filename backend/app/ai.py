@@ -19,7 +19,9 @@ from .planner import (
     MARKETS,
     PROFILES,
     clean_split,
+    estimate_budget,
     money,
+    plausible_budget,
     standard_ids,
     task_categories,
 )
@@ -532,6 +534,9 @@ currency: ISO code stated or implied by the amount/city (e.g. $ in New York -> U
 one of: {currencies}. budget: a whole number in that currency ("8 lakh" = 800000,
 "25k" = 25000). If the brief gives a per-person contribution or ticket price and a head
 count, budget = contribution x people (e.g. 600 each from 400 residents = 240000).
+budget_estimate: ONLY when budget is null - a realistic total for this event in that
+currency, from the guest count, city, culture, scale and must-haves; null if you cannot
+judge. budget_reasoning: one sentence (max 25 words) explaining that estimate.
 split: design the BUDGET CATEGORIES for THIS event: 5-10 categories named for what the
 money will really be spent on (e.g. a society festival might need "Food & prasad",
 "Puja samagri", "Mehndi artists", "Decor & lighting", "Sound & bhajan", "Terrace setup";
@@ -553,7 +558,8 @@ would give (money, logistics, timing, risks, guest experience), each one sentenc
 30 words. Use only amounts derivable from the brief.
 Return JSON only:
 {{"kind": str|null, "name": str|null (short event title), "event_date": str|null,
- "guests": int|null, "budget": int|null, "currency": str|null, "city": str|null,
+ "guests": int|null, "budget": int|null, "budget_estimate": int|null,
+ "budget_reasoning": str|null, "currency": str|null, "city": str|null,
  "vibe": str|null (max 12 words), "tradition": str|null (culture/religion/region),
  "split": {{...}}, "custom_tasks": [...], "summary": [str],
  "suggestions": [str]}}"""
@@ -582,6 +588,17 @@ def _clean_brief(raw: Any, today: date, kind: str | None = None) -> dict[str, An
             fields[key] = int(value)
     if raw.get("currency") in MARKETS:
         fields["currency"] = raw["currency"]
+    estimate = None
+    if "budget" not in fields and fields.get("guests"):
+        cur = fields.get("currency", "INR")
+        guess, why = raw.get("budget_estimate"), str(raw.get("budget_reasoning") or "").strip()
+        if plausible_budget(kind, fields["guests"], guess, cur):
+            fields["budget"] = int(guess)
+            estimate = {"amount": int(guess), "source": "gemini",
+                        "reasoning": why[:200] or "Estimated from your requirements."}
+        else:  # missing or implausible model figure: use the transparent rule instead
+            estimate = _rule_estimate(kind, fields["guests"], cur)
+            fields["budget"] = estimate["amount"]
     split = clean_split(kind, raw.get("split"))
     categories = task_categories(split or PROFILES[kind]["split"])
     tasks = []
@@ -603,6 +620,7 @@ def _clean_brief(raw: Any, today: date, kind: str | None = None) -> dict[str, An
     tasks = tasks[:20]
     skipped = sorted(standard_ids(kind)) if len(tasks) >= FULL_CHECKLIST else []
     return {"fields": fields, "custom_tasks": tasks, "split": split, "skipped": skipped,
+            "budget_estimate": estimate,
             "summary": strings("summary", 6, 160), "suggestions": strings("suggestions", 5, 240)}
 
 
@@ -714,11 +732,22 @@ def fallback_brief(brief: str, today: date, kind: str | None = None) -> dict[str
         summary.append(f"About {fields['guests']} guests.")
     if "budget" in fields:
         summary.append(f"Budget of {money(fields['budget'], fields.get('currency', 'INR'))}.")
+    estimate = None
+    if "budget" not in fields and "guests" in fields:
+        estimate = _rule_estimate(kind, fields["guests"], fields.get("currency", "INR"))
+        fields["budget"] = estimate["amount"]
     summary.append("Offline reading: please check the details below.")
     suggestions = ["Connect Gemini for tailored suggestions; until then, start with the "
                    "longest-lead bookings in your timeline."]
     return {"fields": fields, "custom_tasks": tasks, "split": None, "skipped": [],
-            "summary": summary, "suggestions": suggestions}
+            "budget_estimate": estimate, "summary": summary, "suggestions": suggestions}
+
+
+def _rule_estimate(kind: str, guests: int, currency: str) -> dict[str, Any]:
+    amount = estimate_budget(kind, guests, currency)
+    return {"amount": amount, "source": "utsav", "reasoning": (
+        f"{guests} guests x about {money(amount // guests, currency)} each, a comfortable "
+        f"spend for a {PROFILES[kind]['label'].lower()}.")}
 
 
 # ── day-of run sheet ────────────────────────────────────────────────────

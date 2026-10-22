@@ -91,6 +91,7 @@ export function renderBudget(panel, plan) {
       ${b.lines.map((l, i) => `<span data-color="${sliceColor(i, b.lines.length)}"><i></i>${esc(l.category)} · ${pct(l.planned, b.total)}%</span>`).join('')}
     </div>
     <div class="cat-grid">${cards}</div>
+    ${b.note ? `<p class="budget-note">✦ ${esc(b.note)}</p>` : ''}
     <p class="muted small">Enter what you've spent or committed. Utsav flags overspends and re-scores
       the plan. ${b.designed ? '✦ Categories and shares were designed from your brief' : 'Splits follow typical market costs'};
       Contingency absorbs surprises.</p>`;

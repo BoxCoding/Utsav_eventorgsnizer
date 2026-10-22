@@ -146,6 +146,32 @@ def benchmark(kind: str, currency: str = "INR") -> int:
     return max(1, int(float(f"{value:.2g}")))
 
 
+COMFORT = 1.6  # a comfortable plan spends ~1.6x the minimum per guest
+
+
+def estimate_budget(kind: str, guests: int, currency: str = "INR") -> int:
+    """Suggested total when the user gives no budget: guests x comfortable spend per guest."""
+    return int(float(f"{guests * benchmark(kind, currency) * COMFORT:.2g}"))
+
+
+def assess_budget(kind: str, guests: int, budget: int | None, currency: str = "INR") -> dict:
+    """Judge a budget against the per-guest benchmark (or suggest one when it is missing)."""
+    floor = benchmark(kind, currency)
+    out = {"benchmark": floor, "estimate": estimate_budget(kind, guests, currency)}
+    if not budget:
+        return {**out, "verdict": "missing", "per_guest": None}
+    ratio = budget / guests / floor
+    verdict = ("too-low" if ratio < 0.5 else "tight" if ratio < 1 else
+               "comfortable" if ratio <= 4 else "generous")
+    return {**out, "verdict": verdict, "per_guest": budget // guests}
+
+
+def plausible_budget(kind: str, guests: int, amount: Any, currency: str = "INR") -> bool:
+    """Guard for model estimates: within 0.5x-8x of the minimum spend for this many guests."""
+    floor = guests * benchmark(kind, currency)
+    return isinstance(amount, (int, float)) and 0.5 * floor <= amount <= 8 * floor
+
+
 def inr(amount: int) -> str:
     """Format rupees with Indian digit grouping: 1234567 -> ₹12,34,567."""
     digits = str(abs(int(amount)))
@@ -290,7 +316,8 @@ def build_plan(event: dict[str, Any], today: date | None = None) -> dict[str, An
             "per_guest": event["budget"] // event["guests"],
             "benchmark_per_guest": benchmark(event["kind"], currency),
             "currency": currency,
-            "designed": bool(event.get("split_override")),  # categories tailored from the brief
+            "designed": bool(event.get("split_override")),
+            "note": event.get("budget_note") or "",  # categories tailored from the brief
             "lines": lines,
         },
         "tasks": tasks,

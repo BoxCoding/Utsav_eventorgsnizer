@@ -195,6 +195,10 @@ input.filled, select.filled { border-color: #a78bfa; background: var(--accent-so
 .br-split span.gone { text-decoration: line-through; color: var(--bad); background: var(--bad-bg); border-color: #fecaca; }
 .br-skip { display: flex; flex-wrap: wrap; gap: .4rem; }
 .br-skip span { font-size: .8rem; text-decoration: line-through; color: var(--muted); background: var(--surface-2); border-radius: 999px; padding: .2rem .65rem; text-transform: capitalize; }
+.budget-hint { margin: -.3rem 0 0; font-size: .86rem; color: var(--muted); min-height: 1.2em; display: flex; flex-wrap: wrap; gap: .4rem; align-items: center; }
+.br-estimate { background: var(--accent-soft); border-radius: 12px; padding: .75rem .9rem; }
+.br-estimate p { margin: .15rem 0; }
+.budget-note { background: var(--accent-soft); color: var(--accent-dark); border-radius: 10px; padding: .55rem .8rem; font-size: .88rem; }
 .br-missing { color: var(--warn); font-weight: 600; font-size: .88rem; }
 .br-ok { color: var(--ok); font-weight: 600; font-size: .88rem; }
 .tag.brief { background: #fdf2f8; color: #be185d; }

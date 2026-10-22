@@ -134,8 +134,11 @@
           <label class="span-2">Event name <input id="ev-name" required maxlength="100" placeholder="Maya & Daniel's wedding"></label>
           <label>Date <input id="ev-date" type="date" required></label>
           <label>Guests <input id="ev-guests" type="number" min="1" max="10000" required value="150"></label>
-          <label>Total budget <input id="ev-budget" type="number" min="100" step="100" required value="800000"></label>
+          <label>Total budget <span class="hint">(optional)</span>
+            <input id="ev-budget" type="number" min="100" step="100" inputmode="numeric"
+              placeholder="Leave blank: Utsav estimates it" aria-describedby="budget-hint"></label>
           <label>Currency <select id="ev-currency"></select></label>
+          <p id="budget-hint" class="budget-hint span-2" aria-live="polite"></p>
           <label>City <input id="ev-city" maxlength="80" placeholder="Chennai, Dubai, London…"></label>
           <label>Tradition / culture <input id="ev-tradition" maxlength="80" placeholder="Tamil, Catholic, Jewish, secular…"></label>
           <label class="span-2">Vibe & preferences <input id="ev-vibe" maxlength="200" placeholder="elegant, eco-friendly, live music"></label>

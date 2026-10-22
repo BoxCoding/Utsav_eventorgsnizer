@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException, Response
+from fastapi import APIRouter, Depends, HTTPException, Query, Response
 
 from .. import ai, store
 from ..auth import current_user
@@ -11,15 +11,26 @@ from ..gemini_client import LLMUnavailableError, generate_image
 from ..notify import build_notifications, urgency
 from ..planner import (
     PROFILES,
+    assess_budget,
     build_plan,
     clean_split,
+    estimate_budget,
     event_split,
     standard_ids,
     task_categories,
     task_ids,
     to_ics,
 )
-from ..schemas import ArtRequest, AskRequest, BriefRequest, EventIn, EventPatch, InviteRequest
+from ..schemas import (
+    ArtRequest,
+    AskRequest,
+    BriefRequest,
+    Currency,
+    EventIn,
+    EventPatch,
+    InviteRequest,
+    Kind,
+)
 
 router = APIRouter(prefix="/api/events", tags=["events"])
 notifications_router = APIRouter(prefix="/api/notifications", tags=["notifications"])
@@ -43,6 +54,18 @@ async def profiles() -> dict:
         kind: {"label": p["label"], "categories": list(p["split"]), "tasks": len(p["tasks"])}
         for kind, p in PROFILES.items()
     }
+
+
+@router.get("/estimate")
+async def estimate(
+    kind: Kind,
+    guests: int = Query(ge=1, le=10_000),
+    currency: Currency = "INR",
+    budget: int | None = Query(default=None, ge=0, le=10_000_000_000),
+    user: dict = Depends(current_user),
+) -> dict:
+    """Live budget check for the creation form: suggestion, per-guest spend and verdict."""
+    return assess_budget(kind, guests, budget, currency)
 
 
 @router.get("")
@@ -84,6 +107,10 @@ async def create_event(payload: EventIn, user: dict = Depends(current_user)) -> 
     categories = task_categories(fields["split_override"] or PROFILES[payload.kind]["split"])
     fields["custom_tasks"] = [t for t in fields["custom_tasks"] if t["category"] in categories]
     fields["skipped"] = sorted(set(fields["skipped"]) & standard_ids(payload.kind))
+    if not fields["budget"]:  # never invent a fixed default: size it to this event
+        fields["budget"] = estimate_budget(payload.kind, payload.guests, payload.currency)
+        fields["budget_note"] = fields["budget_note"] or (
+            f"Estimated by Utsav for {payload.guests} guests; adjust it in What-if.")
     event_id = store.create_event(user["id"], fields)
     return _view(_owned(user, event_id))
 

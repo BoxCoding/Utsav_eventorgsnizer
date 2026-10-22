@@ -44,6 +44,7 @@ CREATE TABLE IF NOT EXISTS events (
     custom_json TEXT NOT NULL DEFAULT '[]',
     split_json TEXT,
     skip_json TEXT NOT NULL DEFAULT '[]',
+    budget_note TEXT NOT NULL DEFAULT '',
     run_json TEXT,
     alerts_json TEXT,
     created_at TEXT DEFAULT CURRENT_TIMESTAMP
@@ -60,7 +61,7 @@ CREATE TABLE IF NOT EXISTS artwork (
 
 EDITABLE = {
     "name", "kind", "event_date", "guests", "budget", "city", "vibe", "tradition", "currency",
-    "brief",
+    "brief", "budget_note",
 }
 JSON_COLUMNS = {
     "done": "done_json",
@@ -85,6 +86,7 @@ MIGRATIONS = (
     "ALTER TABLE events ADD COLUMN skip_json TEXT NOT NULL DEFAULT '[]'",
     "ALTER TABLE events ADD COLUMN run_json TEXT",
     "ALTER TABLE events ADD COLUMN alerts_json TEXT",
+    "ALTER TABLE events ADD COLUMN budget_note TEXT NOT NULL DEFAULT ''",
 )
 
 
