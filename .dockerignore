@@ -1,0 +1,12 @@
+.venv
+.env
+.env.*
+utsav.db*
+tests
+__pycache__
+*.pyc
+.pytest_cache
+.ruff_cache
+.git
+deploy
+mobile

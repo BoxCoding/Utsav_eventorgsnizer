@@ -1,0 +1,12 @@
+# Files Cloud Build should not receive. (Replaces .gitignore for gcloud uploads.)
+.gcloudignore
+.git
+.env
+.env.*
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+utsav.db*
+mobile/

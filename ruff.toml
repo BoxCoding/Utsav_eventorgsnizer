@@ -1,0 +1,34 @@
+# Ruff configuration.
+#
+# Kept in a standalone ruff.toml rather than pyproject.toml on purpose: the
+# serverless build pipeline installs dependencies with `uv`, and a
+# pyproject.toml at the deploy root makes it ignore requirements.txt and
+# demand a full [project] table. requirements.txt stays the single source of
+# runtime dependencies; this file carries lint configuration only.
+
+line-length = 100
+# Conservative target: the code must also run on hosts with an older
+# interpreter than the local one (Railway / Render / a VPS), so lint must not
+# push 3.11+ only syntax into the source.
+target-version = "py310"
+src = ["backend", "tests"]
+extend-exclude = [".venv"]
+
+[lint]
+select = [
+    "E",   # pycodestyle errors
+    "W",   # pycodestyle warnings
+    "F",   # pyflakes
+    "I",   # isort (import ordering)
+    "B",   # bugbear
+    "UP",  # pyupgrade
+    "SIM", # simplify
+    "N",   # naming conventions
+]
+ignore = [
+    "B008", # function call in default arg — FastAPI's Depends()/Cookie() idiom
+]
+
+[lint.per-file-ignores]
+# Tests configure the environment before importing the app under test.
+"tests/*" = ["E402"]
