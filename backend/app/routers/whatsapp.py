@@ -13,6 +13,7 @@ from .. import store, whatsapp
 from ..ai import pretty_date
 from ..auth import current_user
 from ..config import settings
+from ..limits import WHATSAPP
 from ..notify import build_notifications, urgency
 from ..planner import build_plan
 from ..schemas import WaInviteRequest, WaRemindRequest
@@ -50,7 +51,7 @@ def _invite_image(event_id: int, payload: WaInviteRequest) -> tuple[str, bytes]:
     return "image/png", data
 
 
-@router.post("/events/{event_id}/whatsapp/invite")
+@router.post("/events/{event_id}/whatsapp/invite", dependencies=[WHATSAPP])
 async def send_invites(
     event_id: int, payload: WaInviteRequest, user: dict = Depends(current_user)
 ) -> dict:
@@ -88,7 +89,7 @@ async def send_invites(
             "errors": errors[:3], "guest_list": updated}
 
 
-@router.post("/events/{event_id}/whatsapp/remind")
+@router.post("/events/{event_id}/whatsapp/remind", dependencies=[WHATSAPP])
 async def send_reminder(
     event_id: int, payload: WaRemindRequest, user: dict = Depends(current_user)
 ) -> dict:

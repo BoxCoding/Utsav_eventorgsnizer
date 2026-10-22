@@ -127,16 +127,16 @@ function linear(g, x0, y0, x1, y1, stops) {
 }
 
 // ── colour helpers: keep accents readable on the text panel (WCAG AA 4.5:1) ──
-const rgb = (hex) => [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16));
+export const rgb = (hex) => [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16));
 const toHex = (c) => `#${c.map((v) => Math.round(v).toString(16).padStart(2, '0')).join('')}`;
 const lum = (c) => {
   const [r, g, b] = c.map((v) => { const s = v / 255; return s <= 0.03928 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4; });
   return 0.2126 * r + 0.7152 * g + 0.0722 * b;
 };
-const contrast = (a, b) => { const [x, y] = [lum(a), lum(b)].sort((m, n) => n - m); return (x + 0.05) / (y + 0.05); };
+export const contrast = (a, b) => { const [x, y] = [lum(a), lum(b)].sort((m, n) => n - m); return (x + 0.05) / (y + 0.05); };
 
 /** Shift a palette colour toward white (on dark panels) or black (on light) until readable. */
-function readable(hex, light) {
+export function readable(hex, light) {
   const base = rgb(hex);
   const panel = light ? [20, 20, 26] : [255, 250, 243];
   const toward = light ? [255, 255, 255] : [0, 0, 0];

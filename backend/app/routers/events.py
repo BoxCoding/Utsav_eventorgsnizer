@@ -8,6 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from .. import ai, store
 from ..auth import current_user
 from ..gemini_client import LLMUnavailableError, generate_image
+from ..limits import AI_IMAGE, AI_TEXT
 from ..notify import build_notifications, urgency
 from ..planner import (
     PROFILES,
@@ -90,7 +91,7 @@ async def list_events(user: dict = Depends(current_user)) -> dict:
     return {"events": summaries}
 
 
-@router.post("/brief")
+@router.post("/brief", dependencies=[AI_TEXT])
 async def read_brief(payload: BriefRequest, user: dict = Depends(current_user)) -> dict:
     """Turn a free-text description into form fields, personalised tasks and a budget split.
     Nothing is saved: the user reviews the result before creating the event."""
@@ -161,7 +162,7 @@ async def delete_event(event_id: int, user: dict = Depends(current_user)) -> Res
     return Response(status_code=204)
 
 
-@router.post("/{event_id}/replan")
+@router.post("/{event_id}/replan", dependencies=[AI_TEXT])
 async def replan(event_id: int, payload: BriefRequest, user: dict = Depends(current_user)) -> dict:
     """Re-read an edited brief against the current plan. Nothing is saved: the client shows
     the proposed changes and PATCHes only what the user accepts."""
@@ -169,7 +170,7 @@ async def replan(event_id: int, payload: BriefRequest, user: dict = Depends(curr
     return await ai.read_brief(payload.brief, kind=event["kind"], current=ai.current_plan(event))
 
 
-@router.post("/{event_id}/alerts")
+@router.post("/{event_id}/alerts", dependencies=[AI_TEXT])
 async def brief_alerts(event_id: int, user: dict = Depends(current_user)) -> dict:
     """(Re)generate smart reminders from the brief; the bell shows each in its window."""
     event = _owned(user, event_id)
@@ -178,7 +179,7 @@ async def brief_alerts(event_id: int, user: dict = Depends(current_user)) -> dic
     return {"brief_alerts": alerts}
 
 
-@router.post("/{event_id}/runsheet")
+@router.post("/{event_id}/runsheet", dependencies=[AI_TEXT])
 async def run_sheet(event_id: int, user: dict = Depends(current_user)) -> dict:
     """(Re)draft the day-of schedule with Gemini and save it on the event."""
     event = _owned(user, event_id)
@@ -187,7 +188,7 @@ async def run_sheet(event_id: int, user: dict = Depends(current_user)) -> dict:
     return {"run_sheet": sheet}
 
 
-@router.post("/{event_id}/ideas")
+@router.post("/{event_id}/ideas", dependencies=[AI_TEXT])
 async def generate_ideas(event_id: int, user: dict = Depends(current_user)) -> dict:
     """(Re)generate personalised ideas and cache them on the event."""
     event = _owned(user, event_id)
@@ -196,7 +197,7 @@ async def generate_ideas(event_id: int, user: dict = Depends(current_user)) -> d
     return {"ideas": ideas}
 
 
-@router.post("/{event_id}/invite")
+@router.post("/{event_id}/invite", dependencies=[AI_TEXT])
 async def generate_invite(
     event_id: int, payload: InviteRequest, user: dict = Depends(current_user)
 ) -> dict:
@@ -214,7 +215,7 @@ async def list_art(event_id: int, user: dict = Depends(current_user)) -> dict:
     return {"art": store.art_keys(event_id)}
 
 
-@router.post("/{event_id}/invite/art")
+@router.post("/{event_id}/invite/art", dependencies=[AI_IMAGE])
 async def paint_art(
     event_id: int, payload: ArtRequest, user: dict = Depends(current_user)
 ) -> dict:
@@ -277,7 +278,7 @@ async def get_art(event_id: int, key: str, user: dict = Depends(current_user)) -
     return Response(data, media_type=mime, headers={"Cache-Control": "private, max-age=86400"})
 
 
-@router.post("/{event_id}/ask")
+@router.post("/{event_id}/ask", dependencies=[AI_TEXT])
 async def ask(event_id: int, payload: AskRequest, user: dict = Depends(current_user)) -> dict:
     event = _owned(user, event_id)
     history = [turn.model_dump() for turn in payload.history]

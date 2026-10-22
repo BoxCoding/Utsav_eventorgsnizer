@@ -8,7 +8,7 @@ const LABELS = {
   city: 'City', tradition: 'Tradition', vibe: 'Vibe',
 };
 
-let ctx = { event: null, save: null, proposal: null, signature: null };
+const ctx = { event: null, save: null, proposal: null, signature: null };
 
 function show(key, value, currency) {
   if (value == null || value === '') return '—';

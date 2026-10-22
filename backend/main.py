@@ -2,11 +2,12 @@
 from __future__ import annotations
 
 import logging
+from urllib.parse import urlsplit
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
-from fastapi.responses import FileResponse, HTMLResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from .app import auth, store
@@ -33,12 +34,31 @@ app.add_middleware(
 )
 
 
+UNSAFE = {"POST", "PATCH", "PUT", "DELETE"}
+
+
+def _cross_site(request: Request) -> bool:
+    """A cookie-authenticated write from another site (CSRF). SameSite=Lax already blocks
+    most; this also covers same-site subdomains and older browsers."""
+    origin = request.headers.get("origin")
+    return (request.method in UNSAFE and auth.COOKIE_NAME in request.cookies
+            and bool(origin) and urlsplit(origin).netloc != request.headers.get("host"))
+
+
 @app.middleware("http")
 async def security_headers(request: Request, call_next):
-    response = await call_next(request)
+    if _cross_site(request):
+        response = JSONResponse({"detail": "cross-site request blocked"}, status_code=403)
+    else:
+        response = await call_next(request)
     response.headers["Content-Security-Policy"] = CSP
     response.headers["X-Content-Type-Options"] = "nosniff"
     response.headers["Referrer-Policy"] = "same-origin"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["Cross-Origin-Opener-Policy"] = "same-origin"
+    response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=(), payment=()"
+    # Browsers ignore HSTS on plain-http localhost, so it's safe to always send.
+    response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
     if request.url.path.startswith("/api/"):
         response.headers.setdefault("Cache-Control", "no-store")
     else:

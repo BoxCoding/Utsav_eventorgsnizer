@@ -612,3 +612,26 @@ def test_cors_allows_only_the_app_shells():
     assert ok.headers["access-control-allow-origin"] == "https://localhost"
     bad = c.options("/api/events/1", headers={"Origin": "https://evil.example", **preflight})
     assert "access-control-allow-origin" not in bad.headers
+
+
+def test_hardening_headers_present():
+    h = TestClient(app).get("/api/health").headers
+    assert h["x-frame-options"] == "DENY" and "max-age" in h["strict-transport-security"]
+    assert "camera=()" in h["permissions-policy"]
+
+
+def test_cross_site_cookie_writes_are_blocked(client):
+    evil = client.post("/api/events", json=event_payload(), headers={"Origin": "https://evil.example"})
+    assert evil.status_code == 403
+    same = client.post("/api/events", json=event_payload(), headers={"Origin": "http://testserver"})
+    assert same.status_code == 201
+
+
+def test_ai_routes_have_a_per_user_quota(client, monkeypatch):
+    from backend.app import limits
+
+    event_id = _create(client)["event"]["id"]
+    monkeypatch.setattr(limits, "_hits", limits.defaultdict(limits.deque))
+    codes = [client.post(f"/api/events/{event_id}/ask", json={"question": "Hi?"}).status_code
+             for _ in range(41)]
+    assert codes[:40] == [200] * 40 and codes[40] == 429

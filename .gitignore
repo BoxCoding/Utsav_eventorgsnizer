@@ -16,3 +16,4 @@ marketing/reel/reel-test.mp4
 *.mp4
 .DS_Store
 mobile/www/
+node_modules/

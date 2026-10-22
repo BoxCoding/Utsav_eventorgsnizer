@@ -32,10 +32,10 @@ function waNumber(phone, countryCode) {
   return phone.trim().startsWith('+') ? digits : `${countryCode.replace(/\D/g, '')}${digits.replace(/^0+/, '')}`;
 }
 
-const waLink = (guest, text, cc) => `https://wa.me/${waNumber(guest.phone, cc)}?text=${encodeURIComponent(personalise(text, guest))}`;
+export const waLink = (guest, text, cc) => `https://wa.me/${waNumber(guest.phone, cc)}?text=${encodeURIComponent(personalise(text, guest))}`;
 const mailLink = (to, subject, body, bcc = '') => `mailto:${encodeURIComponent(to)}?${bcc ? `bcc=${encodeURIComponent(bcc)}&` : ''}subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
 
-function csvCell(value) {
+export function csvCell(value) {
   let v = String(value ?? '');
   if (/^[=+\-@]/.test(v)) v = `'${v}`; // neutralise spreadsheet formula injection
   return `"${v.replaceAll('"', '""')}"`;
