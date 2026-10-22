@@ -827,6 +827,11 @@ h1 { font-weight: 800; }
 }
 .native #ics-link, .native #print-btn, .native #install-btn { display: none; }
 
+/* First paint while the session loads (a cold server can take a few seconds) */
+.boot { min-height: 60vh; display: grid; place-content: center; justify-items: center; gap: .75rem; color: var(--muted); }
+.boot img { animation: pulse 1.4s ease-in-out infinite; }
+@keyframes pulse { 50% { transform: scale(.92); opacity: .7; } }
+
 @media (max-width: 900px) {
   .auth-layout, .summary { grid-template-columns: 1fr; }
   .auth-layout { gap: 2rem; min-height: auto; }

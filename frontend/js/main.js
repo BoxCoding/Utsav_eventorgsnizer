@@ -78,15 +78,16 @@ async function boot() {
     }
   });
 
-  const [health, session] = await Promise.all([
-    api('GET', '/api/health').catch(() => ({ llm: 'unreachable' })),
-    api('GET', '/api/auth/session').catch(() => ({ user: null })),
-  ]);
-  const status = $('#ai-status');
-  status.textContent = { gemini: '● Gemini', unreachable: '● No connection' }[health.llm] || '● Offline mode';
-  status.classList.add(health.llm === 'gemini' ? 'ok' : 'warn');
+  // The AI status pill fills in when it can; it must not hold up the first screen.
+  api('GET', '/api/health').catch(() => ({ llm: 'unreachable' })).then((health) => {
+    const status = $('#ai-status');
+    status.textContent = { gemini: '● Gemini', unreachable: '● No connection' }[health.llm] || '● Offline mode';
+    status.classList.add(health.llm === 'gemini' ? 'ok' : 'warn');
+  });
+  const session = await api('GET', '/api/auth/session').catch(() => ({ user: null }));
   setUser(session.user);
   if (session.user) await syncOffline();
+  $('#boot').remove();
   route();
 }
 

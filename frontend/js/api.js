@@ -83,6 +83,9 @@ export async function api(method, path, body) {
       setToken(data.token);
       delete data.token;
     }
+    // Opening the app offline right after signing in must find the user, not the
+    // signed-out session that was cached when the app first started.
+    if (data?.user && path.startsWith('/api/auth/')) offline.cachePut('/api/auth/session', { user: data.user });
     if (path === '/api/auth/logout') {
       setToken(null);
       await offline.clearAll();
