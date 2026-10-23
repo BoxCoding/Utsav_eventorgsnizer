@@ -41,6 +41,15 @@ async function route() {
   }
 }
 
+function refreshStatus() {
+  api('GET', '/api/health').catch(() => ({ llm: 'unreachable' })).then((health) => {
+    const status = $('#ai-status');
+    status.textContent = { gemini: '● Gemini', unreachable: '● No connection' }[health.llm] || '● Offline mode';
+    status.classList.toggle('ok', health.llm === 'gemini');
+    status.classList.toggle('warn', health.llm !== 'gemini');
+  });
+}
+
 async function boot() {
   bindAuth((u) => {
     setUser(u);
@@ -72,18 +81,14 @@ async function boot() {
       : `Offline · showing plans saved on this device${detail.pending ? ` · ${detail.pending} change${detail.pending === 1 ? '' : 's'} will sync` : ''}`;
   });
   window.addEventListener('online', async () => {
+    refreshStatus();
     if (await syncOffline()) {
       toast('Back online: your offline changes are saved');
       if (user) route();
     }
   });
 
-  // The AI status pill fills in when it can; it must not hold up the first screen.
-  api('GET', '/api/health').catch(() => ({ llm: 'unreachable' })).then((health) => {
-    const status = $('#ai-status');
-    status.textContent = { gemini: '● Gemini', unreachable: '● No connection' }[health.llm] || '● Offline mode';
-    status.classList.add(health.llm === 'gemini' ? 'ok' : 'warn');
-  });
+  refreshStatus(); // fills in when it can; it must not hold up the first screen
   const session = await api('GET', '/api/auth/session').catch(() => ({ user: null }));
   setUser(session.user);
   if (session.user) await syncOffline();

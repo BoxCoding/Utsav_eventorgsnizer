@@ -515,7 +515,9 @@ def poster_prompt(concept: dict[str, Any], event: dict[str, Any]) -> str:
 PROOF_SYSTEM = """You are a meticulous proof-reader for printed invitations. Compare the text
 visible in the image with the expected lines. A line is wrong if any word, digit, date,
 time or name differs, is missing, garbled or misspelt (case and punctuation do not
-matter). Return JSON only: {"wrong": [the expected lines that are not reproduced exactly]}"""
+matter). A line is also wrong if its date, time or venue is printed more than once, or
+if the image shows any other date, time or place that is not in the expected lines.
+Return JSON only: {"wrong": [the expected lines that are not reproduced exactly]}"""
 
 
 async def proofread_poster(image: bytes, mime: str, lines: dict[str, Any]) -> list[str]:

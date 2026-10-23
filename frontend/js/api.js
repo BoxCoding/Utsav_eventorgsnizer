@@ -51,6 +51,8 @@ function detailMessage(detail) {
     // FastAPI validation errors: show the first one in plain words.
     const first = detail[0] ?? {};
     const field = (first.loc ?? []).slice(-1)[0];
+    // A regex in a message means nothing to a person: say what's wrong instead.
+    if (first.type === 'string_pattern_mismatch') return `Please enter a valid ${field || 'value'}.`;
     return `${field ? `${field}: ` : ''}${(first.msg ?? 'invalid input').replace(/^Value error, /, '')}`;
   }
   return detail || 'Something went wrong';

@@ -8,7 +8,7 @@ export default [
     languageOptions: { sourceType: 'module', globals: globals.browser },
   },
   {
-    files: ['mobile/scripts/**/*.mjs', 'tests/**/*.mjs', 'tests/**/*.js'],
+    files: ['mobile/scripts/**/*.mjs', 'marketing/demo/*.mjs', 'tests/**/*.mjs', 'tests/**/*.js'],
     languageOptions: { sourceType: 'module', globals: { ...globals.node, ...globals.browser } },
   },
   {

@@ -17,3 +17,5 @@ marketing/reel/reel-test.mp4
 .DS_Store
 mobile/www/
 node_modules/
+marketing/demo/demo.db*
+marketing/demo/raw/
