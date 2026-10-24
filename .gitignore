@@ -5,17 +5,12 @@ __pycache__/
 .pytest_cache/
 .ruff_cache/
 utsav.db*
-mobile/node_modules/
-mobile/android/app/build/
-mobile/android/.gradle/
-mobile/android/build/
-mobile/dist/
-mobile/android/local.properties
 marketing/reel/node_modules/
 marketing/reel/reel-test.mp4
 *.mp4
 .DS_Store
-mobile/www/
 node_modules/
 marketing/demo/demo.db*
 marketing/demo/raw/
+# Native Android/iOS apps (Capacitor) stay local, not on GitHub
+mobile/
