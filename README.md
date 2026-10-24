@@ -59,7 +59,7 @@ frontend/ (vanilla ES modules, no build)      backend/ (FastAPI)
 The Capacitor apps (`mobile/`) **bundle the whole web app inside the APK/IPA**, so the app opens instantly even with no signal. Earlier builds only pointed a WebView at the server and showed "server not connected" when the network dropped.
 - **On-device database:** every plan you open is kept in IndexedDB (`frontend/js/offline.js`). Plans, budgets, checklists, timelines and guest lists open offline. Ticks, spend and guest edits made offline are recomputed on the device (the same task-status rules as the server), queued, and synced in order when the connection returns, with an *Offline · N changes will sync* banner. AI features clearly say they need internet. Signing out wipes the device copy.
 - **Auth:** the app gets a bearer token at sign-in (`X-Utsav-Client: native`), because cookies don't cross from the app's origin. The API allows only the app origins via CORS (`UTSAV_APP_ORIGINS`).
-- **Build:** `cd mobile && npm run sync` (bundles `frontend/` with the API address and a strict CSP, then `cap sync`), then build the APK in Android Studio or with `./gradlew assembleDebug`.
+- **Build:** the Capacitor project (`mobile/`) is kept outside this repository. Its `npm run sync` copies `frontend/` with the API address and a strict CSP, then `cap sync`, and the APK is built with `./gradlew assembleDebug`.
 
 ## Installable PWA (web)
 Utsav installs like a native app on Android, iPhone and desktop. It has a home-screen icon, opens full-screen with no browser bars, its top bar is safe for phone notches, and it loads instantly on repeat visits.

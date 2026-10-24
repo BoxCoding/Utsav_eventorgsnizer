@@ -4,7 +4,7 @@ from __future__ import annotations
 from datetime import date
 from typing import Literal
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 Kind = Literal["wedding", "birthday", "community"]
 Currency = Literal[
@@ -67,6 +67,8 @@ class EventIn(BaseModel):
 
 
 class Guest(BaseModel):
+    model_config = ConfigDict(str_strip_whitespace=True)  # "   " is not a name
+
     name: str = Field(min_length=1, max_length=80)
     email: str = Field(default="", max_length=254, pattern=r"^$|" + EMAIL)
     phone: str = Field(default="", max_length=24, pattern=r"^$|^\+?[0-9 ()-]{6,24}$")

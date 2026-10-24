@@ -8,7 +8,7 @@ from collections.abc import Callable
 
 from fastapi import Depends, HTTPException
 
-from .auth import current_user
+from .auth import current_user, prune_window
 
 # shortcut: per-process memory, like the login limiter; move to Redis/Firestore past 1 instance.
 _hits: dict[tuple[str, int], deque[float]] = defaultdict(deque)
@@ -20,8 +20,7 @@ def quota(bucket: str, limit: int, window: float) -> Callable:
     async def check(user: dict = Depends(current_user)) -> None:
         now = time.monotonic()
         hits = _hits[(bucket, user["id"])]
-        while hits and now - hits[0] > window:
-            hits.popleft()
+        prune_window(hits, window, now)
         if len(hits) >= limit:
             wait = int(window - (now - hits[0])) + 1
             raise HTTPException(status_code=429, detail=f"Too many requests; try again in {wait}s",

@@ -335,7 +335,7 @@ async function paint() {
 async function designFile(fmt) {
   const name = `${ctx.event.name}-${fmt}`;
   if (fmt !== 'poster') return canvasFile(`#cv-${fmt}`, `${name}.png`);
-  const blob = await (await fetch($('#poster-img').src)).blob();
+  const blob = await (await fetch(await imageUrl($('#poster-img').dataset.src))).blob(); // src may not be set yet
   return new File([blob], `${name}.${blob.type.split('/')[1] || 'png'}`, { type: blob.type });
 }
 

@@ -1,6 +1,7 @@
 // On-device database (IndexedDB) for the installed app: every plan opened online is
 // kept here, so plans, budgets, checklists and timelines open with no signal. Edits
-// made offline (ticks, spend, guest list, what-if) are queued and synced in order.
+// made offline (ticks, spend, guest list) are queued and synced in order.
+import { todayIso } from './dom.js';
 
 let dbPromise;
 function db() {
@@ -55,7 +56,7 @@ function status(due, today, done) {
 export function applyEdit(view, fields) {
   const event = { ...view.event, ...fields };
   const plan = structuredClone(view.plan);
-  const today = new Date().toISOString().slice(0, 10);
+  const today = todayIso(); // local date, like the server's planner
   const done = new Set(event.done || []);
   for (const t of plan.tasks) t.status = status(t.due, today, done.has(t.id));
   plan.progress = Math.round((100 * plan.tasks.filter((t) => t.status === 'done').length) / plan.tasks.length) / 100;
@@ -67,4 +68,23 @@ export function applyEdit(view, fields) {
   plan.budget.spent = plan.budget.lines.reduce((s, l) => s + l.spent, 0);
   plan.budget.remaining = plan.budget.total - plan.budget.spent;
   return { event, plan, offline: true };
+}
+
+/** An offline edit replayed onto the server's current event: only what changed on this
+ * device is applied, so ticks or spend entered elsewhere meanwhile are kept. */
+export function rebase(server, base, body) {
+  const out = { ...body };
+  if (body.done) {
+    const before = new Set(base.done || []);
+    const after = new Set(body.done);
+    const done = new Set(server.done || []);
+    for (const id of after) if (!before.has(id)) done.add(id);
+    for (const id of before) if (!after.has(id)) done.delete(id);
+    out.done = [...done];
+  }
+  if (body.spend) {
+    const changed = Object.entries(body.spend).filter(([k, v]) => (base.spend || {})[k] !== v);
+    out.spend = { ...(server.spend || {}), ...Object.fromEntries(changed) };
+  }
+  return out; // guest_list: the device's list wins
 }

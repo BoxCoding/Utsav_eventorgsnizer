@@ -8,7 +8,7 @@ globalThis.matchMedia = () => ({ matches: false });
 
 const { esc, money } = await import('../../frontend/js/dom.js');
 const { parseGuests, csvCell, waLink } = await import('../../frontend/js/invites.js');
-const { applyEdit } = await import('../../frontend/js/offline.js');
+const { applyEdit, rebase } = await import('../../frontend/js/offline.js');
 const { readable, contrast, rgb } = await import('../../frontend/js/invite-art.js');
 
 test('esc neutralises every HTML-significant character', () => {
@@ -68,4 +68,13 @@ test('offline edits recompute ticks, progress and spend without touching the ori
   assert.equal(out.plan.budget.remaining, 350);
   assert.equal(view.plan.tasks[0].status, 'late'); // cached copy untouched until saved
   assert.equal(out.offline, true);
+});
+
+test('offline edits replay as changes, keeping what other devices did meanwhile', () => {
+  const base = { done: ['venue'], spend: { Food: 100, Decor: 50 } };      // what the phone had
+  const body = { done: ['cake'], spend: { Food: 300, Decor: 50 } };       // phone: +cake, -venue, Food 300
+  const server = { done: ['venue', 'dj'], spend: { Food: 100, Decor: 80 } }; // web: +dj, Decor 80
+  const out = rebase(server, base, body);
+  assert.deepEqual(new Set(out.done), new Set(['dj', 'cake']));
+  assert.deepEqual(out.spend, { Food: 300, Decor: 80 });
 });

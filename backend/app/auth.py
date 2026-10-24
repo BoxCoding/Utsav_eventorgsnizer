@@ -37,11 +37,16 @@ LOGIN_LIMIT, LOGIN_WINDOW = 5, 60.0  # attempts per email per minute
 _attempts: dict[str, deque[float]] = defaultdict(deque)
 
 
+def prune_window(hits: deque[float], window: float, now: float) -> None:
+    """Drop timestamps older than `window` seconds (shared by the login and AI limiters)."""
+    while hits and now - hits[0] > window:
+        hits.popleft()
+
+
 def _rate_limited(email: str) -> bool:
     now = time.monotonic()
     window = _attempts[email]
-    while window and now - window[0] > LOGIN_WINDOW:
-        window.popleft()
+    prune_window(window, LOGIN_WINDOW, now)
     window.append(now)
     return len(window) > LOGIN_LIMIT
 

@@ -252,11 +252,14 @@ async def _paint_poster(event: dict[str, Any], idx: int, concept: dict[str, Any]
     for _ in range(POSTER_ATTEMPTS):
         try:
             mime, data = await generate_image(prompt, "2:3")
-            wrong = await ai.proofread_poster(data, mime, lines)
         except LLMUnavailableError as exc:
             raise HTTPException(
                 status_code=503, detail="AI posters need Gemini; try again in a moment"
             ) from exc
+        try:
+            wrong = await ai.proofread_poster(data, mime, lines)
+        except LLMUnavailableError:
+            continue  # unverifiable is treated like misspelt: try another poster
         if not wrong:
             key = f"{idx}-poster"
             store.save_art(event["id"], key, mime, data)

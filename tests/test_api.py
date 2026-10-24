@@ -635,3 +635,36 @@ def test_ai_routes_have_a_per_user_quota(client, monkeypatch):
     codes = [client.post(f"/api/events/{event_id}/ask", json={"question": "Hi?"}).status_code
              for _ in range(41)]
     assert codes[:40] == [200] * 40 and codes[40] == 429
+
+
+def test_poster_retries_when_proofreading_is_unavailable(client, monkeypatch):
+    from backend.app import ai
+    from backend.app.gemini_client import LLMUnavailableError
+    from backend.app.routers import events as events_router
+
+    calls = []
+
+    async def fake_image(prompt, aspect):
+        calls.append(1)
+        return "image/png", b"poster"
+
+    async def flaky_proof(image, mime, lines):
+        if len(calls) == 1:
+            raise LLMUnavailableError("malformed JSON")
+        return []
+
+    monkeypatch.setattr(events_router, "generate_image", fake_image)
+    monkeypatch.setattr(ai, "proofread_poster", flaky_proof)
+    event_id = _create(client)["event"]["id"]
+    client.post(f"/api/events/{event_id}/invite", json={"tone": "fun"})
+    r = client.post(f"/api/events/{event_id}/invite/art", json={"concept": 0, "format": "poster"})
+    assert r.status_code == 200 and len(calls) == 2
+
+
+def test_blank_guest_names_are_rejected(client):
+    event_id = _create(client)["event"]["id"]
+    blank = [{"name": "   ", "phone": "+91 98200 11223"}]
+    r = client.patch(f"/api/events/{event_id}", json={"guest_list": blank})
+    assert r.status_code == 422
+    ok = client.patch(f"/api/events/{event_id}", json={"guest_list": [{"name": "  Meera  "}]})
+    assert ok.json()["event"]["guest_list"][0]["name"] == "Meera"

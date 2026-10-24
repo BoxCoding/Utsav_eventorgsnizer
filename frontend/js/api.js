@@ -8,6 +8,8 @@ export const NATIVE = Boolean(API_BASE);
 const OFFLINE_FIRST = NATIVE || matchMedia('(display-mode: standalone)').matches;
 const TOKEN_KEY = 'utsav:token';
 const EVENT_PATH = /^\/api\/events\/\d+$/;
+// Live answers about the server itself: never served from the device copy.
+const LIVE_ONLY = new Set(['/api/health', '/api/whatsapp/status']);
 // Edits that can be applied and recomputed on the device; the rest need the server.
 const OFFLINE_FIELDS = new Set(['done', 'spend', 'guest_list']);
 
@@ -91,7 +93,7 @@ export async function api(method, path, body) {
     if (path === '/api/auth/logout') {
       setToken(null);
       await offline.clearAll();
-    } else if ((method === 'GET' && path !== '/api/health') || (method === 'PATCH' && EVENT_PATH.test(path))) {
+    } else if ((method === 'GET' && !LIVE_ONLY.has(path)) || (method === 'PATCH' && EVENT_PATH.test(path))) {
       offline.cachePut(path, data); // a PATCH answers with the same view as the GET
     }
     connectivity(true);
@@ -99,7 +101,7 @@ export async function api(method, path, body) {
   } catch (err) {
     if (err.status !== 0) throw err;
     connectivity(false);
-    if (method === 'GET' && path !== '/api/health') { // health must reflect the live server
+    if (method === 'GET' && !LIVE_ONLY.has(path)) {
       const saved = await offline.cacheGet(path);
       if (saved) return saved;
       throw new ApiError(0, "You're offline, and this hasn't been opened on this device yet.");
@@ -107,7 +109,7 @@ export async function api(method, path, body) {
     if (method === 'PATCH' && EVENT_PATH.test(path) && Object.keys(body).every((k) => OFFLINE_FIELDS.has(k))) {
       const saved = await offline.cacheGet(path);
       if (saved) {
-        await offline.enqueue({ path, body });
+        await offline.enqueue({ path, body, base: { done: saved.event.done, spend: saved.event.spend } });
         const view = offline.applyEdit(saved, body);
         await offline.cachePut(path, view);
         connectivity(false);
@@ -130,10 +132,12 @@ export async function syncOffline() {
   let sent = 0;
   for (const item of await offline.queued().catch(() => [])) {
     try {
-      offline.cachePut(item.path, await request('PATCH', item.path, item.body));
+      const body = item.base ? offline.rebase((await request('GET', item.path)).event, item.base, item.body) : item.body;
+      offline.cachePut(item.path, await request('PATCH', item.path, body));
     } catch (err) {
-      if (err.status === 0) break; // still offline: keep the rest queued
-      // 4xx: the event changed or was deleted elsewhere; this edit can't apply any more
+      // Offline, or signed out (session expired): keep the edits until the next sign-in.
+      if (err.status === 0 || err.status === 401) break;
+      // other 4xx: the event was deleted or changed shape elsewhere; this edit can't apply
     }
     await offline.dequeue(item.key);
     sent += 1;
@@ -143,16 +147,19 @@ export async function syncOffline() {
 }
 
 /** URL for an authenticated image: same-origin path on the web, a blob URL in the app. */
-const blobs = new Map();
+const blobs = new Map(); // image path without ?v= -> { path, url }
 export function imageUrl(path) {
   if (!NATIVE) return Promise.resolve(path);
-  if (!blobs.has(path)) {
-    blobs.set(path, fetch(API_BASE + path, { headers: headers() })
-      .then((r) => (r.ok ? r.blob() : Promise.reject(new Error(String(r.status)))))
-      .then((b) => URL.createObjectURL(b))
-      .catch((e) => { blobs.delete(path); throw e; }));
-  }
-  return blobs.get(path);
+  const key = path.split('?')[0];
+  const held = blobs.get(key);
+  if (held?.path === path) return held.url;
+  if (held) held.url.then((u) => URL.revokeObjectURL(u), () => {}); // repainted: free the old one
+  const url = fetch(API_BASE + path, { headers: headers() })
+    .then((r) => (r.ok ? r.blob() : Promise.reject(new Error(String(r.status)))))
+    .then((b) => URL.createObjectURL(b));
+  url.catch(() => blobs.delete(key));
+  blobs.set(key, { path, url });
+  return url;
 }
 
 // WhatsApp Business Cloud API connected on the server? Asked once per page load.

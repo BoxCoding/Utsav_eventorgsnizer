@@ -4,7 +4,7 @@
   "type": "module",
   "description": "Frontend quality tooling: lint, unit tests and an automated accessibility audit.",
   "scripts": {
-    "lint": "eslint --no-error-on-unmatched-pattern frontend/js mobile/scripts marketing/demo tests/js tests/e2e",
+    "lint": "eslint frontend/js marketing/demo tests/js tests/e2e",
     "test": "node --test \"tests/js/*.test.mjs\"",
     "test:a11y": "node tests/e2e/a11y.mjs"
   },
