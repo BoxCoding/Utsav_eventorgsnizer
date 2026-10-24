@@ -49,7 +49,7 @@ export async function clearAll() {
 function status(due, today, done) {
   if (done) return 'done';
   if (due < today) return 'late';
-  return (new Date(due) - new Date(today)) / 864e5 <= 14 ? 'soon' : 'upcoming';
+  return (Date.parse(due) - Date.parse(today)) / 864e5 <= 14 ? 'soon' : 'upcoming';
 }
 
 /** Apply an offline edit to a cached {event, plan} view, as the server would. */

@@ -40,7 +40,8 @@ export const fmtDate = (iso) =>
 export const todayIso = () => new Date().toLocaleDateString('en-CA'); // YYYY-MM-DD, local
 
 export function showView(id) {
-  for (const view of document.querySelectorAll('.view')) view.hidden = view.id !== id;
+  const views = /** @type {NodeListOf<HTMLElement>} */ (document.querySelectorAll('.view'));
+  for (const view of views) view.hidden = view.id !== id;
   $('#main-content').focus({ preventScroll: true });
 }
 

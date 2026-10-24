@@ -38,10 +38,11 @@ for VAR in GEMINI_API_KEY WHATSAPP_TOKEN WHATSAPP_PHONE_NUMBER_ID WHATSAPP_APP_S
   SECRETS+=("${VAR}=${NAME}:latest")
 done
 
+# One instance always warm: no multi-second cold start on the first visit (~$8-10/month).
 # shortcut: login and AI quotas are per instance, so the effective limit is up to 3x;
 # move them to Firestore or Redis before raising max-instances further.
 gcloud run deploy "$SERVICE" --source . --project "$PROJECT_ID" --region "$REGION" \
-  --allow-unauthenticated --min-instances 0 --max-instances 3 \
+  --allow-unauthenticated --min-instances 1 --max-instances 3 \
   --memory 512Mi --cpu 1 --timeout 300 \
   --set-env-vars "UTSAV_STORE=firestore" \
   --set-secrets "$(IFS=,; echo "${SECRETS[*]}")" --quiet

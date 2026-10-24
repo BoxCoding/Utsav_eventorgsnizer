@@ -14,3 +14,5 @@ marketing/demo/demo.db*
 marketing/demo/raw/
 # Native Android/iOS apps (Capacitor) stay local, not on GitHub
 mobile/
+tests/e2e/.e2e.db*
+.coverage

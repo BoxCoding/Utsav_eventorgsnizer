@@ -73,7 +73,7 @@ async function boot() {
     route();
   });
   window.addEventListener('hashchange', route);
-  window.addEventListener('utsav:connectivity', ({ detail }) => {
+  window.addEventListener('utsav:connectivity', (/** @type {CustomEvent} */ { detail }) => {
     const bar = $('#offline-bar');
     bar.hidden = detail.online && !detail.pending;
     bar.textContent = detail.online

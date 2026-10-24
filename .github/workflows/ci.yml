@@ -21,6 +21,7 @@ jobs:
         with: { python-version: "3.12" }
       - run: npm ci
       - run: npm run lint
+      - run: npm run typecheck
       - run: npm test
       - run: pip install -r requirements.txt
       - name: Accessibility audit (axe-core, WCAG 2.1 AA)
@@ -28,3 +29,4 @@ jobs:
           UTSAV_OFFLINE=1 python -m uvicorn backend.main:app --port 8101 &
           for _ in $(seq 1 30); do curl -sf localhost:8101/api/health && break; sleep 1; done
           npm run test:a11y
+          BASE_URL=http://localhost:8101 npm run test:e2e

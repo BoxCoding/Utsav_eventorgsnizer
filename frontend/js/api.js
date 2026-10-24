@@ -3,7 +3,7 @@
 // a bearer token, and keeps an on-device copy of every plan so it works offline.
 import * as offline from './offline.js';
 
-export const API_BASE = document.querySelector('meta[name="utsav-api"]')?.content || '';
+export const API_BASE = document.querySelector('meta[name="utsav-api"]')?.getAttribute('content') || '';
 export const NATIVE = Boolean(API_BASE);
 const OFFLINE_FIRST = NATIVE || matchMedia('(display-mode: standalone)').matches;
 const TOKEN_KEY = 'utsav:token';

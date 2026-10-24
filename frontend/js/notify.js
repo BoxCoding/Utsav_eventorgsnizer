@@ -162,7 +162,7 @@ export function bindNotifications() {
   } catch { /* storage unavailable */ }
   $('#bell').addEventListener('click', () => setOpen($('#notif-panel').hidden));
   document.addEventListener('click', (e) => {
-    if (!e.target.closest('.notif-wrap')) setOpen(false);
+    if (!(/** @type {Element} */ (e.target)).closest('.notif-wrap')) setOpen(false);
   });
   document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape' && !$('#notif-panel').hidden) {

@@ -5,14 +5,17 @@
   "description": "Frontend quality tooling: lint, unit tests and an automated accessibility audit.",
   "scripts": {
     "lint": "eslint frontend/js marketing/demo tests/js tests/e2e",
+    "typecheck": "tsc -p jsconfig.json",
     "test": "node --test \"tests/js/*.test.mjs\"",
-    "test:a11y": "node tests/e2e/a11y.mjs"
+    "test:a11y": "node tests/e2e/a11y.mjs",
+    "test:e2e": "node tests/e2e/flows.mjs"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
     "axe-core": "^4.10.3",
     "eslint": "^10.13.0",
     "globals": "^16.4.0",
-    "playwright-core": "^1.56.0"
+    "playwright-core": "^1.56.0",
+    "typescript": "^7.0.2"
   }
 }

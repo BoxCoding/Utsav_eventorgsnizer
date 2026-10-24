@@ -7,10 +7,10 @@
 | Criterion | Evidence (all reproducible with `scripts/check.sh`) |
 |---|---|
 | **Problem statement alignment** | Every requirement (weddings, birthdays and community events; budgets; timelines; vendor checklists; personalised ideas) is mapped to a feature in the table below. |
-| **Code quality** | Modular FastAPI routers and services. Vanilla ES modules with no build step. `ruff` and `eslint` (recommended rules plus `eqeqeq`, `prefer-const` and no unused variables) are clean. Schemas are validated at every boundary. CI runs it all (`.github/workflows/ci.yml`). |
+| **Code quality** | Modular FastAPI routers and services; the GenAI layer is a package of focused modules (`backend/app/ai/`: ideas, invites, brief, assistant, schedule). Vanilla ES modules with no build step, **type-checked by TypeScript** in check-only mode (`npm run typecheck`, 0 errors). `ruff` and `eslint` (recommended rules plus `eqeqeq`, `prefer-const` and no unused variables) are clean. Schemas are validated at every boundary. CI runs it all (`.github/workflows/ci.yml`). |
 | **Security** | PBKDF2 passwords and hashed session tokens. httpOnly SameSite cookies on the web, bearer tokens in the app, and a CORS allow-list. CSRF Origin check, strict CSP and HSTS. Per-user quotas on AI and WhatsApp calls. WhatsApp webhooks are HMAC-verified. Prompt-injection hardening and model-output validation. See [Security](#security). |
-| **Efficiency** | All numbers come from a deterministic engine (no LLM latency on the core plan). Assets are gzipped and served at immutable versioned URLs. AI artwork is generated once and stored. WhatsApp bulk sends run in parallel with a concurrency cap. Offline reads come from IndexedDB in milliseconds. |
-| **Testing** | **93 backend tests** (pytest), run on both SQLite and the Firestore emulator, with **96% combined coverage**. Gemini, the image model and the WhatsApp Graph API are mocked at the HTTP layer. Plus **7 frontend unit tests** (`node --test`). |
+| **Efficiency** | All numbers come from a deterministic engine (no LLM latency on the core plan; a full plan computes in about 0.08 ms, so it needs no cache). One Cloud Run instance stays warm, so there's no cold start. Assets are gzipped and served at immutable versioned URLs. AI artwork is generated once and stored. WhatsApp bulk sends run in parallel with a concurrency cap. Offline reads come from IndexedDB in milliseconds. |
+| **Testing** | **95 backend tests** (pytest), run on both SQLite and the Firestore emulator, with **96% combined coverage**. Gemini, the image model and the WhatsApp Graph API are mocked at the HTTP layer. Plus **8 frontend unit tests** (`node --test`) and an **end-to-end journey test** in real Chrome (`npm run test:e2e`): sign-up with error cases, budget validation, plan creation, ticks, what-if, invites, Ask Utsav, offline queueing and sync with the network cut, and sign-out. |
 | **Accessibility** | **axe-core audit: 0 WCAG 2.1 A/AA violations** across the landing page, home, all six plan tabs and the notification panel, on desktop and phone (`npm run test:a11y`). Keyboard-first tabs, labelled controls, live regions, AA contrast enforced even on AI-coloured invite text, reduced motion and forced colours supported. |
 
 ## Problem statement → what Utsav does
@@ -110,14 +110,15 @@ Open http://localhost:8101.
 
 ```bash
 scripts/check.sh                 # everything: ruff, pytest + coverage, eslint, JS tests, axe audit
-.venv/bin/python -m pytest -q    # 93 backend tests, offline and deterministic
+.venv/bin/python -m pytest -q    # 95 backend tests, offline and deterministic
 scripts/test-firestore.sh        # the same suite against the Firestore emulator
-npm install && npm test          # frontend unit tests;  npm run lint;  npm run test:a11y
+npm install && npm test          # frontend unit tests;  npm run lint;  npm run typecheck
+npm run test:a11y; npm run test:e2e   # need a running server (see scripts/check.sh)
 ```
 The tests cover rupee formatting, exact budget allocation, task status, health scoring, overspend penalties, ICS output, auth, rate limiting, isolation between users, input validation, model-output validation, the Gemini path (mocked) and the offline fallbacks.
 
 ## Deploy (Cloud Run): live demo
-`PROJECT_ID=<project> deploy/cloudrun.sh` builds the `Dockerfile` with Cloud Build, stores the Gemini key from `.env` in Secret Manager, enables Firestore (native mode, asia-south1) and deploys with `UTSAV_STORE=firestore`, so instances are stateless and data survives redeploys and scaling (0–3 instances). Optional WhatsApp credentials in `.env` are also stored as secrets. It's live at **https://utsav-242709395679.asia-south1.run.app**. Local development and tests use SQLite; `scripts/test-firestore.sh` runs the same suite against the Firestore emulator.
+`PROJECT_ID=<project> deploy/cloudrun.sh` builds the `Dockerfile` with Cloud Build, stores the Gemini key from `.env` in Secret Manager, enables Firestore (native mode, asia-south1) and deploys with `UTSAV_STORE=firestore`, so instances are stateless and data survives redeploys and scaling (1–3 instances, one always warm so there is no cold start). Optional WhatsApp credentials in `.env` are also stored as secrets. It's live at **https://utsav-242709395679.asia-south1.run.app**. Local development and tests use SQLite; `scripts/test-firestore.sh` runs the same suite against the Firestore emulator.
 
 ## Deploy (Vercel)
 `vercel.json` serves `frontend/` as static files and `api/index.py` as the Python function. Set `GEMINI_API_KEY` in the project's environment variables. There is deliberately no `pyproject.toml`: Vercel's `uv` builder would ignore `requirements.txt` if one existed. Note that SQLite lives in `/tmp` on Vercel, which is temporary; use a managed database for real users.
