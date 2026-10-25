@@ -9,6 +9,7 @@ jobs:
         with: { python-version: "3.12" }
       - run: pip install -r requirements-dev.txt
       - run: ruff check .
+      - run: mypy
       - run: pytest -q --cov=backend --cov-fail-under=85
         env: { UTSAV_OFFLINE: "1" }
   frontend:

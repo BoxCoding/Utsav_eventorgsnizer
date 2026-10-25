@@ -29,6 +29,7 @@ def _clean_ideas(raw: Any) -> dict[str, Any]:
         raise LLMUnavailableError("ideas payload missing theme")
 
     def strings(value: Any, limit: int) -> list[str]:
+        """Up to `limit` non-empty, trimmed strings from a model-provided list."""
         if not isinstance(value, list):
             return []
         return [str(v).strip()[:220] for v in value if str(v).strip()][:limit]
@@ -45,6 +46,7 @@ def _clean_ideas(raw: Any) -> dict[str, Any]:
 
 
 async def generate_ideas(event: dict[str, Any], plan: dict[str, Any]) -> dict[str, Any]:
+    """Personalised theme, palette and ideas from Gemini, or the curated fallback."""
     try:
         raw = await gemini_client.generate_json(
             _event_block(event, plan), system=IDEAS_SYSTEM
@@ -158,6 +160,7 @@ _FALLBACK: dict[str, dict[str, Any]] = {
 
 
 def fallback_ideas(event: dict[str, Any]) -> dict[str, Any]:
+    """Curated ideas for the event type, used when Gemini is unavailable."""
     base = _FALLBACK[event["kind"]]
     tradition = f"{event['tradition']} " if event["tradition"] else ""
     vibe = f" — {event['vibe']} —" if event["vibe"] else ""

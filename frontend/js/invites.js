@@ -275,23 +275,29 @@ function renderBody() {
   drawAll();
 }
 
+// State that belongs to one set of concepts; reset when the concepts change.
+const freshInviteState = () => ({
+  edits: {}, concept: 0, art: new Map(), images: new Map(), painting: false, posterFailed: new Set(),
+});
+
+function loadStoredArt(event) {
+  // Artwork painted in an earlier session is stored server-side.
+  api('GET', `/api/events/${event.id}/invite/art`).then(({ art }) => {
+    if (ctx.event.id !== event.id) return;
+    for (const key of art) ctx.art.set(key, 1);
+    if (!isPainted() && !ctx.painting && event.invite.source === 'gemini') paint();
+    else if (art.length) renderBody();
+  }).catch(() => {});
+}
+
 export function renderInvites(event) {
   const signature = JSON.stringify([event.id, event.invite, event.guest_list, event.event_date]);
   if (ctx?.signature === signature) {
     ctx.event = event;
     return; // nothing invite-related changed: keep in-progress edits
   }
-  const same = ctx?.event?.id === event.id;
-  const sameInvite = same && JSON.stringify(ctx.event.invite) === JSON.stringify(event.invite);
-  ctx = {
-    ...ctx, event, signature,
-    edits: sameInvite ? ctx.edits : {},
-    concept: sameInvite ? ctx.concept : 0,
-    art: sameInvite ? ctx.art : new Map(),
-    images: sameInvite ? ctx.images : new Map(),
-    painting: sameInvite ? ctx.painting : false,
-    posterFailed: sameInvite ? ctx.posterFailed : new Set(),
-  };
+  const sameInvite = ctx?.event?.id === event.id && JSON.stringify(ctx.event.invite) === JSON.stringify(event.invite);
+  ctx = { ...ctx, ...(sameInvite ? {} : freshInviteState()), event, signature };
   renderBody();
   whatsappStatus().then((on) => {
     if (on !== Boolean(ctx.waConnected)) {
@@ -299,15 +305,7 @@ export function renderInvites(event) {
       renderBody();
     }
   });
-  if (event.invite?.concepts && !sameInvite) {
-    // Artwork painted in an earlier session is stored server-side.
-    api('GET', `/api/events/${event.id}/invite/art`).then(({ art }) => {
-      if (ctx.event.id !== event.id) return;
-      for (const key of art) ctx.art.set(key, 1);
-      if (!isPainted() && !ctx.painting && event.invite.source === 'gemini') paint();
-      else if (art.length) renderBody();
-    }).catch(() => {});
-  }
+  if (event.invite?.concepts && !sameInvite) loadStoredArt(event);
 }
 
 async function paint() {
@@ -385,6 +383,126 @@ function markSent(i, field) {
   ctx.save({ guest_list: guests });
 }
 
+function downloadBlob(blob, name) {
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = name;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+}
+
+async function designConcepts() {
+  const btn = $('#invite-btn');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner" aria-hidden="true"></span> Designing three concepts…';
+  try {
+    const { invite } = await api('POST', `/api/events/${ctx.event.id}/invite`, {
+      tone: $('#panel-invites input[name="tone"]:checked').value,
+      host: $('#inv-host').value.trim(),
+      venue: $('#inv-venue').value.trim(),
+      time: $('#inv-time').value.trim(),
+      rsvp: $('#inv-rsvp').value.trim(),
+    });
+    ctx.event.invite = invite; // same object as the event view's state
+    renderInvites(ctx.event);
+    toast(invite.source === 'gemini' ? 'Three concepts ready. Painting artwork for the first one…' : 'Three concepts ready');
+    if (invite.source === 'gemini') paint();
+  } catch (err) {
+    toast(err.message);
+    btn.disabled = false;
+  }
+}
+
+// ── button actions ────────────────────────────────────────────────────────
+function pickConcept(btn) {
+  ctx.concept = Number(btn.dataset.concept);
+  ctx.edits = { cc: ctx.edits.cc }; // messages follow the chosen concept
+  renderBody();
+  $(`[data-concept="${ctx.concept}"]`).focus();
+  // Show every concept as finished artwork, not a flat preview.
+  if (!isPainted() && !ctx.painting && ctx.event.invite.source === 'gemini') paint();
+}
+
+async function downloadDesign(btn) {
+  const file = await designFile(btn.dataset.dl);
+  downloadBlob(file, file.name);
+}
+
+async function shareDesign(btn) {
+  const file = await designFile(btn.dataset.shareImg);
+  if (navigator.canShare?.({ files: [file] })) {
+    navigator.share({ files: [file], text: personalise(messages().wa, null) }).catch(() => {});
+  } else toast('Image sharing works on phones. Use Download here, then attach it.');
+}
+
+function copyMessage(btn) {
+  const m = messages();
+  copy(btn.dataset.copyField === 'email' ? `${m.subject}\n\n${m.email}` : m.wa, 'Message copied');
+}
+
+function sendOne(btn) {
+  const i = Number(btn.dataset.i);
+  const g = ctx.event.guest_list[i];
+  const m = messages();
+  if (btn.dataset.send === 'wa') {
+    window.open(waLink(g, m.wa, $('#guest-cc').value), '_blank', 'noopener');
+    markSent(i, 'sent_wa');
+  } else {
+    window.location.href = mailLink(g.email, personalise(m.subject, g), personalise(m.email, g));
+    markSent(i, 'sent_email');
+  }
+}
+
+function saveGuests() {
+  const key = (g) => `${g.name}|${g.email}|${g.phone}`;
+  const old = new Map((ctx.event.guest_list || []).map((g) => [key(g), g]));
+  const guests = parseGuests($('#guest-text').value).map((g) => ({ ...g, ...(old.get(key(g)) || {}) })); // keep sent status
+  ctx.save({ guest_list: guests });
+  toast(`${guests.length} guest${guests.length === 1 ? '' : 's'} saved`);
+}
+
+function bulkEmail() {
+  const { event } = ctx;
+  const emails = event.guest_list.filter((g) => g.email).map((g) => g.email);
+  const m = messages();
+  const link = mailLink('', personalise(m.subject, null), personalise(m.email, null), emails.join(','));
+  if (!emails.length) toast('No guest emails yet');
+  else if (link.length > 1900) toast('Too many guests for one email link. Use the CSV with your mail-merge tool.');
+  else {
+    window.location.href = link;
+    ctx.save({ guest_list: event.guest_list.map((g) => (g.email ? { ...g, sent_email: true } : g)) });
+  }
+}
+
+function bulkWhatsApp() {
+  const m = messages();
+  const cc = $('#guest-cc').value;
+  const all = ctx.event.guest_list.filter((g) => g.phone)
+    .map((g) => `${g.name} (${g.phone}): ${waLink(g, m.wa, cc)}\n${personalise(m.wa, g)}`).join('\n\n');
+  copy(all, 'All WhatsApp messages copied, each with its send link');
+}
+
+function downloadCsv() {
+  const m = messages();
+  const cc = $('#guest-cc').value;
+  const rows = [['name', 'email', 'phone', 'email_subject', 'email_body', 'whatsapp_message', 'whatsapp_link']]
+    .concat(ctx.event.guest_list.map((g) => [g.name, g.email, g.phone, personalise(m.subject, g),
+      personalise(m.email, g), personalise(m.wa, g), g.phone ? waLink(g, m.wa, cc) : '']));
+  const blob = new Blob([rows.map((r) => r.map(csvCell).join(',')).join('\r\n')], { type: 'text/csv' });
+  downloadBlob(blob, `${ctx.event.name}-guests.csv`);
+}
+
+// Buttons are matched by id first, then by the data attribute they carry.
+const BY_ID = {
+  'paint-btn': paint, 'guest-save': saveGuests, 'bulk-email': bulkEmail,
+  'bulk-wa': bulkWhatsApp, 'wa-api-send': sendViaWhatsApp, 'bulk-csv': downloadCsv,
+};
+/** @type {Array<[string, (btn: HTMLButtonElement) => unknown]>} */
+const BY_DATA = [
+  ['concept', pickConcept], ['dl', downloadDesign], ['shareImg', shareDesign],
+  ['copyField', copyMessage], ['send', sendOne],
+];
+
 export function bindInvites(save) {
   ctx = { save };
   const panel = $('#panel-invites');
@@ -392,107 +510,14 @@ export function bindInvites(save) {
   panel.addEventListener('input', (e) => {
     if (editable[e.target.id]) ctx.edits[editable[e.target.id]] = e.target.value;
   });
-  panel.addEventListener('submit', async (e) => {
+  panel.addEventListener('submit', (e) => {
     e.preventDefault();
-    const btn = $('#invite-btn');
-    btn.disabled = true;
-    btn.innerHTML = '<span class="spinner" aria-hidden="true"></span> Designing three concepts…';
-    try {
-      const { invite } = await api('POST', `/api/events/${ctx.event.id}/invite`, {
-        tone: panel.querySelector('input[name="tone"]:checked').value,
-        host: $('#inv-host').value.trim(),
-        venue: $('#inv-venue').value.trim(),
-        time: $('#inv-time').value.trim(),
-        rsvp: $('#inv-rsvp').value.trim(),
-      });
-      ctx.event.invite = invite; // same object as the event view's state
-      renderInvites(ctx.event);
-      if (invite.source === 'gemini') {
-        toast('Three concepts ready. Painting artwork for the first one…');
-        paint();
-      } else toast('Three concepts ready');
-    } catch (err) {
-      toast(err.message);
-      btn.disabled = false;
-    }
+    designConcepts();
   });
-
-  panel.addEventListener('click', async (e) => {
+  panel.addEventListener('click', (e) => {
     const btn = e.target.closest('button');
     if (!btn) return;
-    const { event } = ctx;
-    if (btn.dataset.concept) {
-      ctx.concept = Number(btn.dataset.concept);
-      ctx.edits = { cc: ctx.edits.cc }; // messages follow the chosen concept
-      renderBody();
-      $(`[data-concept="${ctx.concept}"]`).focus();
-      // Show every concept as finished artwork, not a flat preview.
-      if (!isPainted() && !ctx.painting && event.invite.source === 'gemini') paint();
-    } else if (btn.id === 'paint-btn') {
-      paint();
-    } else if (btn.dataset.dl) {
-      const file = await designFile(btn.dataset.dl);
-      const a = document.createElement('a');
-      a.href = URL.createObjectURL(file);
-      a.download = file.name;
-      a.click();
-      setTimeout(() => URL.revokeObjectURL(a.href), 1000);
-    } else if (btn.dataset.shareImg) {
-      const file = await designFile(btn.dataset.shareImg);
-      if (navigator.canShare?.({ files: [file] })) {
-        navigator.share({ files: [file], text: personalise(messages().wa, null) }).catch(() => {});
-      } else toast('Image sharing works on phones. Use Download here, then attach it.');
-    } else if (btn.dataset.copyField) {
-      const m = messages();
-      copy(btn.dataset.copyField === 'email' ? `${m.subject}\n\n${m.email}` : m.wa, 'Message copied');
-    } else if (btn.id === 'guest-save') {
-      const old = new Map((event.guest_list || []).map((g) => [`${g.name}|${g.email}|${g.phone}`, g]));
-      const guests = parseGuests($('#guest-text').value).map((g) => ({
-        ...g, ...(old.get(`${g.name}|${g.email}|${g.phone}`) || {}), // keep sent status
-      }));
-      ctx.save({ guest_list: guests });
-      toast(`${guests.length} guest${guests.length === 1 ? '' : 's'} saved`);
-    } else if (btn.dataset.send) {
-      const i = Number(btn.dataset.i);
-      const g = event.guest_list[i];
-      const m = messages();
-      if (btn.dataset.send === 'wa') {
-        window.open(waLink(g, m.wa, $('#guest-cc').value), '_blank', 'noopener');
-        markSent(i, 'sent_wa');
-      } else {
-        window.location.href = mailLink(g.email, personalise(m.subject, g), personalise(m.email, g));
-        markSent(i, 'sent_email');
-      }
-    } else if (btn.id === 'bulk-email') {
-      const emails = event.guest_list.filter((g) => g.email).map((g) => g.email);
-      const m = messages();
-      const link = mailLink('', personalise(m.subject, null), personalise(m.email, null), emails.join(','));
-      if (!emails.length) toast('No guest emails yet');
-      else if (link.length > 1900) toast('Too many guests for one email link. Use the CSV with your mail-merge tool.');
-      else {
-        window.location.href = link;
-        ctx.save({ guest_list: event.guest_list.map((g) => (g.email ? { ...g, sent_email: true } : g)) });
-      }
-    } else if (btn.id === 'bulk-wa') {
-      const m = messages();
-      const cc = $('#guest-cc').value;
-      const all = event.guest_list.filter((g) => g.phone)
-        .map((g) => `${g.name} (${g.phone}): ${waLink(g, m.wa, cc)}\n${personalise(m.wa, g)}`).join('\n\n');
-      copy(all, 'All WhatsApp messages copied, each with its send link');
-    } else if (btn.id === 'wa-api-send') {
-      sendViaWhatsApp();
-    } else if (btn.id === 'bulk-csv') {
-      const m = messages();
-      const cc = $('#guest-cc').value;
-      const rows = [['name', 'email', 'phone', 'email_subject', 'email_body', 'whatsapp_message', 'whatsapp_link']]
-        .concat(event.guest_list.map((g) => [g.name, g.email, g.phone, personalise(m.subject, g),
-          personalise(m.email, g), personalise(m.wa, g), g.phone ? waLink(g, m.wa, cc) : '']));
-      const blob = new Blob([rows.map((r) => r.map(csvCell).join(',')).join('\r\n')], { type: 'text/csv' });
-      const a = document.createElement('a');
-      a.href = URL.createObjectURL(blob);
-      a.download = `${event.name}-guests.csv`;
-      a.click();
-      setTimeout(() => URL.revokeObjectURL(a.href), 1000);
-    }
+    const action = BY_ID[btn.id] || BY_DATA.find(([key]) => btn.dataset[key])?.[1];
+    action?.(btn);
   });
 }

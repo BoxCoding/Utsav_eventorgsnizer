@@ -31,6 +31,7 @@ class WhatsAppError(Exception):
 
 
 def configured() -> bool:
+    """True when WhatsApp Business credentials are set."""
     return bool(settings.whatsapp_token and settings.whatsapp_phone_id)
 
 
@@ -71,6 +72,7 @@ async def _post(client: httpx.AsyncClient, path: str, **kwargs: Any) -> dict[str
 
 
 async def upload_media(client: httpx.AsyncClient, data: bytes, mime: str) -> str:
+    """Upload an image to WhatsApp and return its media id."""
     body = await _post(client, "media", data={"messaging_product": "whatsapp", "type": mime},
                        files={"file": ("invite", data, mime)})
     return str(body["id"])
@@ -80,6 +82,7 @@ async def send_template(
     client: httpx.AsyncClient, to: str, template: str, params: list[str],
     image_id: str | None = None,
 ) -> str:
+    """Send one approved template message and return its message id."""
     components: list[dict[str, Any]] = []
     if image_id:
         components.append({"type": "header",
@@ -103,6 +106,7 @@ async def send_bulk(
         image_id = await upload_media(client, image[1], image[0]) if image else None
 
         async def one(to: str, params: list[str]) -> dict[str, str]:
+            """Send to one recipient within the concurrency limit, reporting errors per guest."""
             async with sem:
                 try:
                     return {"id": await send_template(client, to, template, params, image_id)}

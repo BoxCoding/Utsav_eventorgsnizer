@@ -1,5 +1,7 @@
-"""WhatsApp Business Cloud API: bulk invites with the AI design, host reminders, and
-delivery receipts. Returns 503 until credentials are set; the UI then keeps wa.me links."""
+"""WhatsApp Business Cloud API: bulk invites, host reminders and delivery receipts.
+
+Returns 503 until credentials are set; the UI then keeps wa.me links.
+"""
 from __future__ import annotations
 
 import base64
@@ -33,6 +35,7 @@ def _require_connected() -> None:
 
 @router.get("/whatsapp/status")
 async def status() -> dict:
+    """Whether WhatsApp Business is connected on this server."""
     return {"connected": whatsapp.configured()}
 
 
@@ -133,7 +136,7 @@ async def receive_webhook(request: Request) -> dict:
     for message_id, new in whatsapp.statuses(payload):
         owner = store.wa_owner(message_id)
         event = store.get_event(*owner) if owner else None
-        if event is None:
+        if owner is None or event is None:
             continue
         guests = event.get("guest_list") or []
         rank = whatsapp.STATUS_RANK

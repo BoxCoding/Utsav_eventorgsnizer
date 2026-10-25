@@ -65,9 +65,22 @@ _STR_FIELDS = {"name": 100, "city": 80, "vibe": 200, "tradition": 80}
 
 
 def _clean_brief(raw: Any, today: date, kind: str | None = None) -> dict[str, Any]:
+    """Validate Gemini's reading of a brief; anything malformed is dropped, not trusted."""
     if not isinstance(raw, dict):
         raise LLMUnavailableError("brief payload is not an object")
-    kind = kind or (raw.get("kind") if raw.get("kind") in PROFILES else "community")
+    kind = kind or (str(raw["kind"]) if raw.get("kind") in PROFILES else "community")
+    fields = _brief_fields(raw, today, kind)
+    estimate = _brief_budget(raw, fields, kind)
+    split = clean_split(kind, raw.get("split"))
+    tasks = _brief_tasks(raw, task_categories(split or PROFILES[kind]["split"]))
+    # A full AI checklist replaces the standard one; a short list only adds to it.
+    skipped = sorted(standard_ids(kind)) if len(tasks) >= FULL_CHECKLIST else []
+    return {"fields": fields, "custom_tasks": tasks, "split": split, "skipped": skipped,
+            "budget_estimate": estimate, "summary": _strings(raw, "summary", 6, 160),
+            "suggestions": _strings(raw, "suggestions", 5, 240)}
+
+
+def _brief_fields(raw: dict[str, Any], today: date, kind: str) -> dict[str, Any]:
     fields: dict[str, Any] = {"kind": kind}
     for key, limit in _STR_FIELDS.items():
         value = raw.get(key)
@@ -85,19 +98,25 @@ def _clean_brief(raw: Any, today: date, kind: str | None = None) -> dict[str, An
             fields[key] = int(value)
     if raw.get("currency") in MARKETS:
         fields["currency"] = raw["currency"]
-    estimate = None
-    if "budget" not in fields and fields.get("guests"):
-        cur = fields.get("currency", "INR")
-        guess, why = raw.get("budget_estimate"), str(raw.get("budget_reasoning") or "").strip()
-        if plausible_budget(kind, fields["guests"], guess, cur):
-            fields["budget"] = int(guess)
-            estimate = {"amount": int(guess), "source": "gemini",
-                        "reasoning": why[:200] or "Estimated from your requirements."}
-        else:  # missing or implausible model figure: use the transparent rule instead
-            estimate = _rule_estimate(kind, fields["guests"], cur)
-            fields["budget"] = estimate["amount"]
-    split = clean_split(kind, raw.get("split"))
-    categories = task_categories(split or PROFILES[kind]["split"])
+    return fields
+
+
+def _brief_budget(raw: dict[str, Any], fields: dict[str, Any], kind: str) -> dict[str, Any] | None:
+    """Fill a missing budget: Gemini's estimate if plausible, else the transparent rule."""
+    if "budget" in fields or not fields.get("guests"):
+        return None
+    cur = fields.get("currency", "INR")
+    guess, why = raw.get("budget_estimate"), str(raw.get("budget_reasoning") or "").strip()
+    if isinstance(guess, (int, float)) and plausible_budget(kind, fields["guests"], guess, cur):
+        estimate = {"amount": int(guess), "source": "gemini",
+                    "reasoning": why[:200] or "Estimated from your requirements."}
+    else:
+        estimate = _rule_estimate(kind, fields["guests"], cur)
+    fields["budget"] = estimate["amount"]
+    return estimate
+
+
+def _brief_tasks(raw: dict[str, Any], categories: set[str]) -> list[dict[str, Any]]:
     tasks = []
     for t in raw.get("custom_tasks") or []:
         valid = (
@@ -109,16 +128,13 @@ def _clean_brief(raw: Any, today: date, kind: str | None = None) -> dict[str, An
             tasks.append({"title": t["title"].strip()[:90], "category": t["category"],
                           "lead_days": max(0, min(400, int(t["lead_days"]))),
                           "vendor": bool(t.get("vendor"))})
-    def strings(key: str, limit: int, size: int) -> list[str]:
-        items = raw.get(key) if isinstance(raw.get(key), list) else []
-        return [str(x).strip()[:size] for x in items if str(x).strip()][:limit]
+    return tasks[:20]
 
-    # A full AI checklist replaces the standard one; a short list only adds to it.
-    tasks = tasks[:20]
-    skipped = sorted(standard_ids(kind)) if len(tasks) >= FULL_CHECKLIST else []
-    return {"fields": fields, "custom_tasks": tasks, "split": split, "skipped": skipped,
-            "budget_estimate": estimate,
-            "summary": strings("summary", 6, 160), "suggestions": strings("suggestions", 5, 240)}
+
+def _strings(raw: dict[str, Any], key: str, limit: int, size: int) -> list[str]:
+    value = raw.get(key)
+    items = value if isinstance(value, list) else []
+    return [str(x).strip()[:size] for x in items if str(x).strip()][:limit]
 
 
 REPLAN_NOTE = """
@@ -199,31 +215,7 @@ def fallback_brief(brief: str, today: date, kind: str | None = None) -> dict[str
     kind = kind or next(
         (k for k, words in _KIND_WORDS.items() if any(w in text for w in words)), "community"
     )
-    fields: dict[str, Any] = {"kind": kind}
-    m = re.search(r"(\d[\d,]*)\s*(?:guests|people|attendees|pax|persons)", text)
-    if m:
-        fields["guests"] = int(m.group(1).replace(",", ""))
-    scale = {"k": 1e3, "lakh": 1e5, "lac": 1e5, "l": 1e5, "crore": 1e7, "m": 1e6}
-    for m in re.finditer(
-        r"(?:budget|spend|around|about)[^\d]{0,20}(\d[\d,.]*)\s*(k|lakh|lac|l|crore|m)?\b(?!\s*(?:guests|people|pax))",
-        text,
-    ):
-        value = float(m.group(1).replace(",", "").rstrip(".")) * scale.get(m.group(2) or "", 1)
-        if value >= 100:  # skips "about 40 people"-style counts
-            fields["budget"] = int(value)
-            break
-    currency = next((c for hint, c in _CURRENCY_HINTS.items() if hint in text), None)
-    if currency:
-        fields["currency"] = currency
-    m = re.search(r"(\d{4}-\d{2}-\d{2})", text)
-    if m and date.fromisoformat(m.group(1)) >= today:
-        fields["event_date"] = m.group(1)
-    categories = set(PROFILES[kind]["split"])
-    tasks = []
-    for words, candidates, title, lead, vendor in _TASK_HINTS:
-        cat = next((c for c in candidates if c in categories), None)
-        if cat and any(w in text for w in words):
-            tasks.append({"title": title, "category": cat, "lead_days": lead, "vendor": vendor})
+    fields = _regex_fields(text, today, kind)
     summary = [f"Looks like a {PROFILES[kind]['label'].lower()}."]
     if "guests" in fields:
         summary.append(f"About {fields['guests']} guests.")
@@ -236,8 +228,52 @@ def fallback_brief(brief: str, today: date, kind: str | None = None) -> dict[str
     summary.append("Offline reading: please check the details below.")
     suggestions = ["Connect Gemini for tailored suggestions; until then, start with the "
                    "longest-lead bookings in your timeline."]
-    return {"fields": fields, "custom_tasks": tasks, "split": None, "skipped": [],
-            "budget_estimate": estimate, "summary": summary, "suggestions": suggestions}
+    return {"fields": fields, "custom_tasks": _hint_tasks(text, kind), "split": None,
+            "skipped": [], "budget_estimate": estimate, "summary": summary,
+            "suggestions": suggestions}
+
+
+_SCALE = {"k": 1e3, "lakh": 1e5, "lac": 1e5, "l": 1e5, "crore": 1e7, "m": 1e6}
+_BUDGET_RE = re.compile(
+    r"(?:budget|spend|around|about)[^\d]{0,20}(\d[\d,.]*)\s*(k|lakh|lac|l|crore|m)?\b"
+    r"(?!\s*(?:guests|people|pax))"
+)
+
+
+def _regex_fields(text: str, today: date, kind: str) -> dict[str, Any]:
+    fields: dict[str, Any] = {"kind": kind}
+    m = re.search(r"(\d[\d,]*)\s*(?:guests|people|attendees|pax|persons)", text)
+    if m:
+        fields["guests"] = int(m.group(1).replace(",", ""))
+    budget = _text_budget(text)
+    if budget:
+        fields["budget"] = budget
+    currency = next((c for hint, c in _CURRENCY_HINTS.items() if hint in text), None)
+    if currency:
+        fields["currency"] = currency
+    m = re.search(r"(\d{4}-\d{2}-\d{2})", text)
+    if m and date.fromisoformat(m.group(1)) >= today:
+        fields["event_date"] = m.group(1)
+    return fields
+
+
+def _text_budget(text: str) -> int | None:
+    """'budget around 8 lakh' -> 800000; skips 'about 40 people'-style counts."""
+    for m in _BUDGET_RE.finditer(text):
+        value = float(m.group(1).replace(",", "").rstrip(".")) * _SCALE.get(m.group(2) or "", 1)
+        if value >= 100:
+            return int(value)
+    return None
+
+
+def _hint_tasks(text: str, kind: str) -> list[dict[str, Any]]:
+    categories = set(PROFILES[kind]["split"])
+    tasks = []
+    for words, candidates, title, lead, vendor in _TASK_HINTS:
+        cat = next((c for c in candidates if c in categories), None)
+        if cat and any(w in text for w in words):
+            tasks.append({"title": title, "category": cat, "lead_days": lead, "vendor": vendor})
+    return tasks
 
 
 def _rule_estimate(kind: str, guests: int, currency: str) -> dict[str, Any]:

@@ -31,51 +31,74 @@ export function renderBriefCard(event) {
   $('#replan-preview').hidden = true;
 }
 
+const listHtml = (items) => items.map((x) => `<li>${esc(x)}</li>`).join('');
+
+function detailsHtml(event, fields) {
+  const currency = fields.currency || event.currency;
+  const changes = Object.entries(fields)
+    .filter(([k, v]) => k in LABELS && v != null && String(v) !== String(event[k] ?? ''));
+  if (!changes.length) return '<p class="muted small">No changes to the event details.</p>';
+  return `<p class="br-label">Event details</p>
+    <ul class="rp-changes">${changes.map(([k, v]) => `
+      <li><label><input type="checkbox" data-field="${k}" checked>
+        <span class="rp-field">${LABELS[k]}</span>
+        <span class="rp-old">${esc(show(k, event[k], event.currency))}</span>
+        <span aria-hidden="true">→</span><span class="sr-only">to</span>
+        <span class="rp-new">${esc(show(k, v, currency))}</span></label></li>`).join('')}
+    </ul>`;
+}
+
+function tasksHtml(oldTasks, newTasks) {
+  const oldTitles = new Set(oldTasks.map((t) => t.title));
+  const newTitles = new Set(newTasks.map((t) => t.title));
+  const added = newTasks.filter((t) => !oldTitles.has(t.title));
+  const removed = oldTasks.filter((t) => !newTitles.has(t.title));
+  if (!added.length && !removed.length) return '';
+  return `<p class="br-label">Personalised tasks</p>
+    <ul class="rp-tasks">
+      ${added.map((t) => `<li class="add"><b aria-label="added">+</b> ${esc(t.title)} <small>${esc(t.category)} · ${t.lead_days} days before</small></li>`).join('')}
+      ${removed.map((t) => `<li class="rm"><b aria-label="removed">−</b> ${esc(t.title)}</li>`).join('')}
+    </ul>`;
+}
+
+function categoriesHtml(oldSplit, split) {
+  const cats = split ? Object.entries(split) : [];
+  if (!cats.length) return '';
+  const oldCats = new Set(Object.keys(oldSplit || {}));
+  const dropped = [...oldCats].filter((c) => !(c in split));
+  return `<p class="br-label">Budget categories</p>
+    <div class="br-split">${cats.map(([c, v]) => `<span class="${oldCats.size && !oldCats.has(c) ? 'new' : ''}"><b>${Math.round(v * 100)}%</b>${esc(c)}</span>`).join('')}
+      ${dropped.map((c) => `<span class="gone">${esc(c)}</span>`).join('')}</div>
+    ${dropped.length ? '<p class="muted small">Spend recorded on removed categories will be cleared.</p>' : ''}`;
+}
+
+function checklistHtml(event, result) {
+  const oldSkip = new Set(event.skipped || []);
+  const newSkip = (result.skipped || []).filter((id) => !oldSkip.has(id));
+  if (newSkip.length > 5) {
+    return `<p class="br-label">Checklist</p>
+      <p class="muted small">The generic ${esc(event.kind)} checklist (${newSkip.length} tasks) is replaced by the ${result.custom_tasks.length} tasks above, written for this event. Ticks on removed tasks are cleared.</p>`;
+  }
+  if (!newSkip.length) return '';
+  return `<p class="br-label">Standard tasks to drop</p>
+    <div class="br-skip">${newSkip.map((id) => `<span>${esc(id.replaceAll('-', ' '))}</span>`).join('')}</div>`;
+}
+
 function showPreview(result) {
   const { event } = ctx;
   ctx.proposal = result;
-  const currency = result.fields.currency || event.currency;
-  const changes = Object.entries(result.fields)
-    .filter(([k, v]) => k in LABELS && v != null && String(v) !== String(event[k] ?? ''));
-  const oldTitles = new Set((event.custom_tasks || []).map((t) => t.title));
-  const newTitles = new Set(result.custom_tasks.map((t) => t.title));
-  const added = result.custom_tasks.filter((t) => !oldTitles.has(t.title));
-  const removed = (event.custom_tasks || []).filter((t) => !newTitles.has(t.title));
-  const oldCats = new Set(Object.keys(ctx.event.split_override || {}));
-  const cats = result.split ? Object.entries(result.split) : [];
-  const newCats = new Set(cats.map(([c]) => c));
-  const droppedCats = [...oldCats].filter((c) => !newCats.has(c));
-  const oldSkip = new Set(event.skipped || []);
-  const newSkip = (result.skipped || []).filter((id) => !oldSkip.has(id));
   const box = $('#replan-preview');
   box.hidden = false;
   box.innerHTML = `
     <div class="br-head"><strong>✦ Proposed changes</strong>
       <span class="pill">${result.source === 'gemini' ? 'Read by Gemini' : 'Offline reading'}</span></div>
-    ${result.summary.length ? `<ul class="br-summary">${result.summary.map((x) => `<li>${esc(x)}</li>`).join('')}</ul>` : ''}
+    ${result.summary.length ? `<ul class="br-summary">${listHtml(result.summary)}</ul>` : ''}
     ${result.suggestions?.length ? `<div class="br-suggest"><p class="br-label">💡 Utsav suggests</p>
-      <ul>${result.suggestions.map((x) => `<li>${esc(x)}</li>`).join('')}</ul></div>` : ''}
-    ${changes.length ? `<p class="br-label">Event details</p>
-      <ul class="rp-changes">${changes.map(([k, v]) => `
-        <li><label><input type="checkbox" data-field="${k}" checked>
-          <span class="rp-field">${LABELS[k]}</span>
-          <span class="rp-old">${esc(show(k, event[k], event.currency))}</span>
-          <span aria-hidden="true">→</span><span class="sr-only">to</span>
-          <span class="rp-new">${esc(show(k, v, currency))}</span></label></li>`).join('')}
-      </ul>` : '<p class="muted small">No changes to the event details.</p>'}
-    ${added.length || removed.length ? `<p class="br-label">Personalised tasks</p>
-      <ul class="rp-tasks">
-        ${added.map((t) => `<li class="add"><b aria-label="added">+</b> ${esc(t.title)} <small>${esc(t.category)} · ${t.lead_days} days before</small></li>`).join('')}
-        ${removed.map((t) => `<li class="rm"><b aria-label="removed">−</b> ${esc(t.title)}</li>`).join('')}
-      </ul>` : ''}
-    ${cats.length ? `<p class="br-label">Budget categories</p>
-      <div class="br-split">${cats.map(([c, v]) => `<span class="${oldCats.size && !oldCats.has(c) ? 'new' : ''}"><b>${Math.round(v * 100)}%</b>${esc(c)}</span>`).join('')}
-        ${droppedCats.map((c) => `<span class="gone">${esc(c)}</span>`).join('')}</div>
-      ${droppedCats.length ? '<p class="muted small">Spend recorded on removed categories will be cleared.</p>' : ''}` : ''}
-    ${newSkip.length > 5 ? `<p class="br-label">Checklist</p>
-      <p class="muted small">The generic ${esc(ctx.event.kind)} checklist (${newSkip.length} tasks) is replaced by the ${result.custom_tasks.length} tasks above, written for this event. Ticks on removed tasks are cleared.</p>`
-    : newSkip.length ? `<p class="br-label">Standard tasks to drop</p>
-      <div class="br-skip">${newSkip.map((id) => `<span>${esc(id.replaceAll('-', ' '))}</span>`).join('')}</div>` : ''}
+      <ul>${listHtml(result.suggestions)}</ul></div>` : ''}
+    ${detailsHtml(event, result.fields)}
+    ${tasksHtml(event.custom_tasks || [], result.custom_tasks)}
+    ${categoriesHtml(event.split_override, result.split)}
+    ${checklistHtml(event, result)}
     <div class="rp-actions">
       <button type="button" class="btn primary" id="replan-apply">Apply changes</button>
       <button type="button" class="btn ghost" id="replan-cancel">Cancel</button>

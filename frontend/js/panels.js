@@ -41,17 +41,11 @@ function lineStatus(line) {
   return ['', 'Not started'];
 }
 
-export function renderBudget(panel, plan) {
-  const b = plan.budget;
-  currency = b.currency;
-  const spentPct = pct(b.spent, b.total);
-  const over = b.lines.filter((l) => l.remaining < 0 && l.category !== 'Contingency').length;
-  const perGuestDelta = b.per_guest - b.benchmark_per_guest;
-  const cards = b.lines.map((line, i) => {
-    const [cls, label] = lineStatus(line);
-    const used = pct(line.spent, line.planned);
-    return `
-      <article class="cat-card ${line.remaining < 0 ? 'over' : ''}" data-color="${sliceColor(i, b.lines.length)}">
+function categoryCard(line, i, count) {
+  const [cls, label] = lineStatus(line);
+  const used = pct(line.spent, line.planned);
+  return `
+      <article class="cat-card ${line.remaining < 0 ? 'over' : ''}" data-color="${sliceColor(i, count)}">
         <header>
           <span class="cat-dot" aria-hidden="true"></span>
           <h3>${esc(line.category)}</h3>
@@ -70,7 +64,15 @@ export function renderBudget(panel, plan) {
               min="0" step="500" value="${line.spent || ''}" placeholder="0" inputmode="numeric"></span>
         </label>
       </article>`;
-  }).join('');
+}
+
+export function renderBudget(panel, plan) {
+  const b = plan.budget;
+  currency = b.currency;
+  const spentPct = pct(b.spent, b.total);
+  const over = b.lines.filter((l) => l.remaining < 0 && l.category !== 'Contingency').length;
+  const perGuestDelta = b.per_guest - b.benchmark_per_guest;
+  const cards = b.lines.map((line, i) => categoryCard(line, i, b.lines.length)).join('');
 
   panel.innerHTML = `
     <div class="dark-hero budget-hero">
@@ -152,38 +154,6 @@ export function renderTimeline(panel, event, plan) {
   const done = count('done');
   const today = todayIso();
 
-  const rescueBox = rescue.length ? `
-    <div class="rescue-card" role="note">
-      <div class="rescue-head">
-        <span class="rescue-icon" aria-hidden="true">⚡</span>
-        <div><h3>Rescue plan</h3>
-          <p>These are past their ideal booking window. Tackle them in this order this week:
-            longest lead time first, because those vendors book out earliest.</p></div>
-      </div>
-      <ol class="rescue-steps">${rescue.map((id, i) => `
-        <li><span class="step">${i + 1}</span><span class="rescue-title">${esc(byId[id].title)}</span>
-          <button type="button" class="btn ghost sm" data-toggle="${id}" aria-pressed="false">Mark done</button></li>`).join('')}
-      </ol>
-    </div>` : '';
-
-  // Group by month, dropping a "Today" marker between past and future items.
-  let groups = '';
-  let month = '';
-  let markerPlaced = false;
-  for (const t of tasks) {
-    const m = new Date(`${t.due}T00:00:00`).toLocaleDateString('en-GB', { month: 'long', year: 'numeric' });
-    if (m !== month) {
-      groups += `${month ? '</ol>' : ''}<h3 class="tl-month">${m}</h3><ol class="tl-list">`;
-      month = m;
-    }
-    if (!markerPlaced && t.due >= today) {
-      groups += `<li class="tl-today" aria-label="Today"><span>Today · ${fmtDate(today)}</span></li>`;
-      markerPlaced = true;
-    }
-    groups += taskItem(t);
-  }
-  groups += '</ol>';
-
   panel.innerHTML = `
     <div class="dark-hero tl-hero">
       <div>
@@ -200,8 +170,8 @@ export function renderTimeline(panel, event, plan) {
         <div class="tile ok"><strong>${done}</strong><span>Done</span></div>
       </div>
     </div>
-    ${rescueBox}
-    <div class="tl">${groups}
+    ${rescueHtml(rescue, byId)}
+    <div class="tl">${monthGroupsHtml(tasks, today)}
       ${runSheetHtml(event)}
       <div class="tl-finale">
         <span class="finale-icon" aria-hidden="true">🎉</span>
@@ -209,6 +179,43 @@ export function renderTimeline(panel, event, plan) {
       </div>
     </div>`;
   paint(panel);
+}
+
+function rescueHtml(rescue, byId) {
+  if (!rescue.length) return '';
+  return `
+    <div class="rescue-card" role="note">
+      <div class="rescue-head">
+        <span class="rescue-icon" aria-hidden="true">⚡</span>
+        <div><h3>Rescue plan</h3>
+          <p>These are past their ideal booking window. Tackle them in this order this week:
+            longest lead time first, because those vendors book out earliest.</p></div>
+      </div>
+      <ol class="rescue-steps">${rescue.map((id, i) => `
+        <li><span class="step">${i + 1}</span><span class="rescue-title">${esc(byId[id].title)}</span>
+          <button type="button" class="btn ghost sm" data-toggle="${id}" aria-pressed="false">Mark done</button></li>`).join('')}
+      </ol>
+    </div>`;
+}
+
+/** Tasks grouped by month, with a "Today" marker between past and future items. */
+function monthGroupsHtml(tasks, today) {
+  let groups = '';
+  let month = '';
+  let markerPlaced = false;
+  for (const t of tasks) {
+    const m = new Date(`${t.due}T00:00:00`).toLocaleDateString('en-GB', { month: 'long', year: 'numeric' });
+    if (m !== month) {
+      groups += `${month ? '</ol>' : ''}<h3 class="tl-month">${m}</h3><ol class="tl-list">`;
+      month = m;
+    }
+    if (!markerPlaced && t.due >= today) {
+      groups += `<li class="tl-today" aria-label="Today"><span>Today · ${fmtDate(today)}</span></li>`;
+      markerPlaced = true;
+    }
+    groups += taskItem(t);
+  }
+  return `${groups}</ol>`;
 }
 
 const CHECK_FILTERS = [['all', 'All'], ['open', 'To do'], ['vendor', 'Vendor bookings'], ['late', 'Overdue'], ['done', 'Done']];
@@ -230,38 +237,9 @@ export function renderChecklist(panel, plan, filter) {
   const progress = pct(done, tasks.length);
   const C = 2 * Math.PI * 42;
 
-  const cats = new Map();
-  for (const t of tasks) {
-    if (!cats.has(t.category)) cats.set(t.category, []);
-    cats.get(t.category).push(t);
-  }
-  const groups = [...cats].map(([cat, all], i) => {
-    const items = all.filter(keep[filter]);
-    if (!items.length) return '';
-    const catDone = all.filter((t) => t.status === 'done').length;
-    return `
-      <fieldset class="check-card" data-color="${SLICE[i % SLICE.length]}">
-        <legend class="sr-only">${esc(cat)}</legend>
-        <header>
-          <span class="cat-dot" aria-hidden="true"></span>
-          <h3>${esc(cat)}</h3>
-          <span class="check-count">${catDone}/${all.length}</span>
-        </header>
-        <div class="bar" aria-hidden="true"><span class="fill" data-w="${pct(catDone, all.length)}"></span></div>
-        ${items.map((t) => {
-          const [cls, text] = STATUS[t.status];
-          return `
-          <label class="check-row ${t.status}">
-            <input type="checkbox" class="check-box" id="chk-${t.id}" data-task="${t.id}" ${t.status === 'done' ? 'checked' : ''}>
-            <span class="check-text">
-              <span class="check-title">${esc(t.title)}${t.vendor ? '<span class="tag">vendor</span>' : ''}${t.custom && !aiChecklist ? '<span class="tag brief">✦ your brief</span>' : ''}</span>
-              <span class="muted small">by ${fmtDate(t.due)}</span>
-            </span>
-            <span class="chip ${cls}">${text}</span>
-          </label>`;
-        }).join('')}
-      </fieldset>`;
-  }).join('');
+  const cats = new Map(); // category -> tasks (Map.groupBy is too new for older Safari)
+  for (const t of tasks) cats.set(t.category, [...(cats.get(t.category) || []), t]);
+  const groups = [...cats].map(([cat, all], i) => checkGroupHtml(cat, all, i, filter)).join('');
 
   panel.innerHTML = `
     <div class="dark-hero check-hero">
@@ -288,4 +266,34 @@ export function renderChecklist(panel, plan, filter) {
     </div>
     <div class="check-grid">${groups || '<p class="muted empty-saved">Nothing here. Try another filter.</p>'}</div>`;
   paint(panel);
+}
+
+function checkRow(t) {
+  const [cls, text] = STATUS[t.status];
+  return `
+    <label class="check-row ${t.status}">
+      <input type="checkbox" class="check-box" id="chk-${t.id}" data-task="${t.id}" ${t.status === 'done' ? 'checked' : ''}>
+      <span class="check-text">
+        <span class="check-title">${esc(t.title)}${t.vendor ? '<span class="tag">vendor</span>' : ''}${t.custom && !aiChecklist ? '<span class="tag brief">✦ your brief</span>' : ''}</span>
+        <span class="muted small">by ${fmtDate(t.due)}</span>
+      </span>
+      <span class="chip ${cls}">${text}</span>
+    </label>`;
+}
+
+function checkGroupHtml(cat, all, i, filter) {
+  const items = all.filter(keep[filter]);
+  if (!items.length) return '';
+  const catDone = all.filter((t) => t.status === 'done').length;
+  return `
+      <fieldset class="check-card" data-color="${SLICE[i % SLICE.length]}">
+        <legend class="sr-only">${esc(cat)}</legend>
+        <header>
+          <span class="cat-dot" aria-hidden="true"></span>
+          <h3>${esc(cat)}</h3>
+          <span class="check-count">${catDone}/${all.length}</span>
+        </header>
+        <div class="bar" aria-hidden="true"><span class="fill" data-w="${pct(catDone, all.length)}"></span></div>
+        ${items.map(checkRow).join('')}
+      </fieldset>`;
 }

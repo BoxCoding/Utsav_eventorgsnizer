@@ -1,0 +1,57 @@
+# Tooling configuration only: runtime dependencies live in requirements.txt (the Docker
+# image installs that), development tools in requirements-dev.txt.
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+src = ["backend", "tests"]
+extend-exclude = [".venv"]
+
+[tool.ruff.lint]
+select = [
+    "E", "W",  # pycodestyle
+    "F",       # pyflakes
+    "I",       # import ordering
+    "B",       # bugbear
+    "UP",      # pyupgrade
+    "SIM",     # simplify
+    "N",       # naming
+    "C90",     # cyclomatic complexity
+    "ANN",     # type annotations
+    "D",       # docstrings
+    "RET",     # return statements
+    "PIE",     # misc lints
+]
+ignore = [
+    "B008",    # Depends()/Cookie() in defaults is FastAPI's dependency idiom
+    "ANN401",  # JSON payloads are dict[str, Any] by nature
+    "D100", "D104",  # module and package docstrings are optional (most modules have one)
+    "D105", "D107",  # magic methods and __init__
+]
+
+[tool.ruff.lint.mccabe]
+max-complexity = 10
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
+
+[tool.ruff.lint.per-file-ignores]
+# Tests configure the environment before importing the app and describe themselves by name.
+"tests/*" = ["E402", "ANN", "D"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]  # import `backend` however pytest is launched (CI runs bare `pytest`)
+filterwarnings = [
+    # Upstream starlette/httpx transition notice raised by fastapi.testclient.
+    "ignore:Using `httpx` with `starlette.testclient` is deprecated.*",
+]
+
+[tool.mypy]
+python_version = "3.12"
+files = ["backend"]
+disallow_untyped_defs = true
+check_untyped_defs = true
+warn_unused_ignores = true
+warn_redundant_casts = true
+no_implicit_optional = true

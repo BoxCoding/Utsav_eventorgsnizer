@@ -155,11 +155,42 @@ export async function refreshNotifications() {
   pushDesktop();
 }
 
-export function bindNotifications() {
-  syncDesktopButton();
-  try {
-    $('#notif-phone').value = localStorage.getItem('utsav:wa-phone') || '';
-  } catch { /* storage unavailable */ }
+function markRead(ids) {
+  for (const id of ids) read.add(id);
+  saveSet('utsav:read', read);
+  render();
+}
+
+function setFilter(btn) {
+  filter = btn.dataset.filter;
+  for (const b of $('#notif-panel').querySelectorAll('.filter')) {
+    b.classList.toggle('on', b === btn);
+    b.setAttribute('aria-pressed', String(b === btn));
+  }
+  render();
+}
+
+// What each per-alert link does.
+const ACTIONS = {
+  open,
+  share,
+  'wa-share': (n) => window.open(`https://wa.me/?text=${encodeURIComponent(reminderText(n))}`, '_blank', 'noopener'),
+  'wa-me': whatsappMe,
+  dismiss: (n) => markRead([n.id]),
+};
+
+function onPanelClick(e) {
+  const btn = e.target.closest('button');
+  if (!btn) return;
+  if (btn.dataset.filter) {
+    setFilter(btn);
+    return;
+  }
+  const n = items.find((x) => x.id === btn.dataset.id);
+  if (n) ACTIONS[btn.dataset.act]?.(n);
+}
+
+function bindPanelOpenClose() {
   $('#bell').addEventListener('click', () => setOpen($('#notif-panel').hidden));
   document.addEventListener('click', (e) => {
     if (!(/** @type {Element} */ (e.target)).closest('.notif-wrap')) setOpen(false);
@@ -170,36 +201,16 @@ export function bindNotifications() {
       $('#bell').focus();
     }
   });
-  $('#notif-panel').addEventListener('click', (e) => {
-    const btn = e.target.closest('button');
-    if (!btn) return;
-    if (btn.dataset.filter) {
-      filter = btn.dataset.filter;
-      for (const b of $('#notif-panel').querySelectorAll('.filter')) {
-        b.classList.toggle('on', b === btn);
-        b.setAttribute('aria-pressed', String(b === btn));
-      }
-      render();
-      return;
-    }
-    const n = items.find((x) => x.id === btn.dataset.id);
-    if (btn.dataset.act === 'open' && n) open(n);
-    if (btn.dataset.act === 'share' && n) share(n);
-    if (btn.dataset.act === 'wa-share' && n) {
-      window.open(`https://wa.me/?text=${encodeURIComponent(reminderText(n))}`, '_blank', 'noopener');
-    }
-    if (btn.dataset.act === 'wa-me' && n) whatsappMe(n);
-    if (btn.dataset.act === 'dismiss' && n) {
-      read.add(n.id);
-      saveSet('utsav:read', read);
-      render();
-    }
-  });
-  $('#notif-read-all').addEventListener('click', () => {
-    for (const n of items) read.add(n.id);
-    saveSet('utsav:read', read);
-    render();
-  });
+}
+
+export function bindNotifications() {
+  syncDesktopButton();
+  try {
+    $('#notif-phone').value = localStorage.getItem('utsav:wa-phone') || '';
+  } catch { /* storage unavailable */ }
+  bindPanelOpenClose();
+  $('#notif-panel').addEventListener('click', onPanelClick);
+  $('#notif-read-all').addEventListener('click', () => markRead(items.map((n) => n.id)));
   $('#notif-show-read').addEventListener('click', () => {
     showRead = !showRead;
     render();

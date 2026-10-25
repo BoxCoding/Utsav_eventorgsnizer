@@ -14,6 +14,7 @@ Currency = Literal[
 
 
 class CustomTask(BaseModel):
+    """A personalised checklist task proposed from the brief."""
     title: str = Field(min_length=3, max_length=90)
     category: str = Field(max_length=40)
     lead_days: int = Field(ge=0, le=400)
@@ -22,6 +23,7 @@ EMAIL = r"^[^@\s]+@[^@\s]+\.[^@\s]+$"
 
 
 class RegisterRequest(BaseModel):
+    """New account details."""
     name: str = Field(min_length=1, max_length=80)
     email: str = Field(max_length=254, pattern=EMAIL)
     password: str = Field(min_length=8, max_length=128)
@@ -33,6 +35,7 @@ class RegisterRequest(BaseModel):
 
 
 class LoginRequest(BaseModel):
+    """Sign-in credentials."""
     email: str = Field(max_length=254)
     password: str = Field(max_length=128)
 
@@ -43,6 +46,7 @@ class LoginRequest(BaseModel):
 
 
 class EventIn(BaseModel):
+    """A new event; budget may be left blank for Utsav to estimate."""
     name: str = Field(min_length=1, max_length=100)
     kind: Kind
     event_date: date
@@ -67,6 +71,7 @@ class EventIn(BaseModel):
 
 
 class Guest(BaseModel):
+    """One guest on the invite list, with WhatsApp delivery status."""
     model_config = ConfigDict(str_strip_whitespace=True)  # "   " is not a name
 
     name: str = Field(min_length=1, max_length=80)
@@ -79,6 +84,7 @@ class Guest(BaseModel):
 
 
 class EventPatch(BaseModel):
+    """Partial update to an event; only the fields sent are changed."""
     name: str | None = Field(default=None, min_length=1, max_length=100)
     event_date: date | None = None
     guests: int | None = Field(default=None, ge=1, le=10_000)
@@ -111,6 +117,7 @@ class EventPatch(BaseModel):
 
 
 class InviteRequest(BaseModel):
+    """Tone and the details an invite may use (nothing else is invented)."""
     tone: Literal["elegant", "fun", "formal", "minimal"] = "elegant"
     host: str = Field(default="", max_length=100)
     venue: str = Field(default="", max_length=150)
@@ -119,21 +126,25 @@ class InviteRequest(BaseModel):
 
 
 class BriefRequest(BaseModel):
+    """A free-text description of the event."""
     brief: str = Field(min_length=15, max_length=3000)
     kind: Kind | None = None  # set when re-planning an existing event (its type is fixed)
 
 
 class ArtRequest(BaseModel):
+    """Which concept and format to paint."""
     concept: int = Field(ge=0, le=2)
     format: Literal["invite", "banner", "poster"]
 
 
 class Turn(BaseModel):
+    """One earlier message in an Ask Utsav conversation."""
     role: Literal["user", "model"]
     content: str = Field(max_length=2000)
 
 
 class AskRequest(BaseModel):
+    """A question for Ask Utsav plus recent conversation turns."""
     question: str = Field(min_length=1, max_length=500)
     history: list[Turn] = Field(default_factory=list, max_length=6)
 
@@ -142,6 +153,7 @@ COUNTRY_CODE = Field(default="+91", pattern=r"^\+?[0-9]{1,4}$")
 
 
 class WaInviteRequest(BaseModel):
+    """Bulk WhatsApp invite: message, default country code and which image to attach."""
     message: str = Field(min_length=1, max_length=900)  # concept text; {name} = first name
     country_code: str = COUNTRY_CODE
     only_unsent: bool = True
@@ -152,5 +164,6 @@ class WaInviteRequest(BaseModel):
 
 
 class WaRemindRequest(BaseModel):
+    """Where to send the host's WhatsApp reminder."""
     phone: str = Field(pattern=r"^\+?[0-9 ()-]{6,24}$")
     country_code: str = COUNTRY_CODE

@@ -1,5 +1,7 @@
-"""Per-user quotas on the routes that cost money (Gemini text/image calls, WhatsApp sends),
-so one account or a stolen session can't run up the bill or spam guests."""
+"""Per-user quotas on the routes that cost money (Gemini calls, WhatsApp sends).
+
+One account or a stolen session can't run up the bill or spam guests.
+"""
 from __future__ import annotations
 
 import time
@@ -18,6 +20,7 @@ def quota(bucket: str, limit: int, window: float) -> Callable:
     """Dependency: at most `limit` calls per `window` seconds per user for this bucket."""
 
     async def check(user: dict = Depends(current_user)) -> None:
+        """Reject the request with 429 once this user's quota for the bucket is spent."""
         now = time.monotonic()
         hits = _hits[(bucket, user["id"])]
         prune_window(hits, window, now)

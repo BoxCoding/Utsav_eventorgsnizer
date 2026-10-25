@@ -6,9 +6,15 @@ export default [
   {
     files: ['frontend/js/**/*.js'],
     languageOptions: { sourceType: 'module', globals: globals.browser },
+    rules: {
+      // Keep functions small enough to read in one screen.
+      complexity: ['error', 12],
+      'max-lines-per-function': ['error', { max: 50, skipBlankLines: true, skipComments: true }],
+      'max-depth': ['error', 4],
+    },
   },
   {
-    files: ['mobile/scripts/**/*.mjs', 'marketing/demo/*.mjs', 'tests/**/*.mjs', 'tests/**/*.js'],
+    files: ['tests/**/*.mjs', 'tests/**/*.js'],
     languageOptions: { sourceType: 'module', globals: { ...globals.node, ...globals.browser } },
   },
   {

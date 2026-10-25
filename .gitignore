@@ -5,14 +5,12 @@ __pycache__/
 .pytest_cache/
 .ruff_cache/
 utsav.db*
-marketing/reel/node_modules/
-marketing/reel/reel-test.mp4
 *.mp4
 .DS_Store
 node_modules/
-marketing/demo/demo.db*
-marketing/demo/raw/
 # Native Android/iOS apps (Capacitor) stay local, not on GitHub
 mobile/
 tests/e2e/.e2e.db*
 .coverage
+# Reel and demo-video production files stay local, not on GitHub
+marketing/

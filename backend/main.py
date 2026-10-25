@@ -1,13 +1,14 @@
-"""Utsav — GenAI event planning assistant. Run: uvicorn backend.main:app --port 8101"""
+"""Utsav, a GenAI event planning assistant. Run: `uvicorn backend.main:app --port 8101`."""
 from __future__ import annotations
 
 import logging
+from collections.abc import Awaitable, Callable
 from urllib.parse import urlsplit
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
-from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 
 from .app import auth, store
@@ -38,15 +39,22 @@ UNSAFE = {"POST", "PATCH", "PUT", "DELETE"}
 
 
 def _cross_site(request: Request) -> bool:
-    """A cookie-authenticated write from another site (CSRF). SameSite=Lax already blocks
-    most; this also covers same-site subdomains and older browsers."""
+    """True for a cookie-authenticated write from another site (CSRF).
+
+    SameSite=Lax already blocks most; this also covers same-site subdomains and older
+    browsers.
+    """
     origin = request.headers.get("origin")
     return (request.method in UNSAFE and auth.COOKIE_NAME in request.cookies
             and bool(origin) and urlsplit(origin).netloc != request.headers.get("host"))
 
 
 @app.middleware("http")
-async def security_headers(request: Request, call_next):
+async def security_headers(
+    request: Request, call_next: Callable[[Request], Awaitable[Response]]
+) -> Response:
+    """Block cross-site cookie writes and add security headers to every response."""
+    response: Response
     if _cross_site(request):
         response = JSONResponse({"detail": "cross-site request blocked"}, status_code=403)
     else:
@@ -70,6 +78,7 @@ async def security_headers(request: Request, call_next):
 
 @app.get("/api/health")
 async def health() -> dict:
+    """Liveness plus which AI engine and database are in use."""
     try:
         store.list_events(0)
         db = "ok"
@@ -82,14 +91,18 @@ FRONTEND = (ROOT / "frontend").resolve()
 
 
 def build_id() -> str:
-    """Changes whenever any frontend file changes: versioned asset URLs then miss every
-    browser cache, so nobody runs stale JS/CSS against a newer page."""
+    """An id that changes whenever any frontend file changes.
+
+    Versioned asset URLs then miss every browser cache, so nobody runs stale JS/CSS
+    against a newer page.
+    """
     latest = max(p.stat().st_mtime_ns for p in FRONTEND.rglob("*") if p.is_file())
     return format(latest, "x")[-10:]
 
 
 @app.get("/", include_in_schema=False)
 async def index() -> HTMLResponse:
+    """The app page, with asset URLs pinned to the current build."""
     prefix = f"/v/{build_id()}/"
     html = (FRONTEND / "index.html").read_text(encoding="utf-8")
     html = html.replace('href="styles.css"', f'href="{prefix}styles.css"')
@@ -100,7 +113,9 @@ async def index() -> HTMLResponse:
 @app.get("/v/{build}/{path:path}", include_in_schema=False)
 async def versioned_asset(build: str, path: str) -> FileResponse:
     """Serve a frontend file under a build-specific URL; safe to cache for a year.
-    Relative module imports inherit the prefix, so every JS module is versioned too."""
+
+    Relative module imports inherit the prefix, so every JS module is versioned too.
+    """
     file = (FRONTEND / path).resolve()
     if FRONTEND not in file.parents or not file.is_file():
         raise HTTPException(status_code=404)

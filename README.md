@@ -7,7 +7,7 @@
 | Criterion | Evidence (all reproducible with `scripts/check.sh`) |
 |---|---|
 | **Problem statement alignment** | Every requirement (weddings, birthdays and community events; budgets; timelines; vendor checklists; personalised ideas) is mapped to a feature in the table below. |
-| **Code quality** | Modular FastAPI routers and services; the GenAI layer is a package of focused modules (`backend/app/ai/`: ideas, invites, brief, assistant, schedule). Vanilla ES modules with no build step, **type-checked by TypeScript** in check-only mode (`npm run typecheck`, 0 errors). `ruff` and `eslint` (recommended rules plus `eqeqeq`, `prefer-const` and no unused variables) are clean. Schemas are validated at every boundary. CI runs it all (`.github/workflows/ci.yml`). |
+| **Code quality** | Modular FastAPI routers and services; the GenAI layer is a package of focused modules (`backend/app/ai/`: ideas, invites, brief, assistant, schedule). Vanilla ES modules with no build step, **type-checked by TypeScript** in check-only mode (`npm run typecheck`, 0 errors); the backend is **type-checked by mypy** (0 errors). Enforced limits keep code readable: cyclomatic complexity ≤ 10 (Python) and ≤ 12 (JS), functions ≤ 50 lines (JS), docstrings and type hints on every public Python function (`ruff` with C90, D, ANN, B, SIM rules; `eslint` with complexity and function-length rules). Tests are split by feature. Schemas are validated at every boundary. CI runs it all (`.github/workflows/ci.yml`). |
 | **Security** | PBKDF2 passwords and hashed session tokens. httpOnly SameSite cookies on the web, bearer tokens in the app, and a CORS allow-list. CSRF Origin check, strict CSP and HSTS. Per-user quotas on AI and WhatsApp calls. WhatsApp webhooks are HMAC-verified. Prompt-injection hardening and model-output validation. See [Security](#security). |
 | **Efficiency** | All numbers come from a deterministic engine (no LLM latency on the core plan; a full plan computes in about 0.08 ms, so it needs no cache). One Cloud Run instance stays warm, so there's no cold start. Assets are gzipped and served at immutable versioned URLs. AI artwork is generated once and stored. WhatsApp bulk sends run in parallel with a concurrency cap. Offline reads come from IndexedDB in milliseconds. |
 | **Testing** | **95 backend tests** (pytest), run on both SQLite and the Firestore emulator, with **96% combined coverage**. Gemini, the image model and the WhatsApp Graph API are mocked at the HTTP layer. Plus **8 frontend unit tests** (`node --test`) and an **end-to-end journey test** in real Chrome (`npm run test:e2e`): sign-up with error cases, budget validation, plan creation, ticks, what-if, invites, Ask Utsav, offline queueing and sync with the network cut, and sign-out. |
@@ -42,17 +42,30 @@
 ## Architecture
 
 ```
-frontend/ (vanilla ES modules, no build)      backend/ (FastAPI)
-  main.js   routing + boot                      main.py           app, CSP + security headers, gzip
-  auth.js   sign in / register                  app/planner.py    deterministic engine (budget, timeline, health, ICS)
-                                                app/notify.py     prioritised alerts derived from the plan
-  home.js   event list + create form            app/ai.py         Gemini prompts, output validation, offline fallbacks
-  event.js  plan tabs, what-if, chat 
-  notify.js bell, alert panel, share, desktop alerts
-  invites.js AI invites, canvas designs, bulk WhatsApp/email           app/gemini_client.py  REST client (key in header, never logged)
-  api.js / dom.js  fetch + escaping helpers     app/auth.py       PBKDF2 + httpOnly session cookies + login rate limit
-                                                app/store.py      SQLite, every query scoped by user_id
-                                                app/routers/events.py  CRUD, plan, ideas, ask, calendar.ics
+backend/                          FastAPI, typed (mypy) and documented
+  main.py                         app, CSP + security headers, CSRF check, gzip, versioned assets
+  app/planner.py                  deterministic engine: budget, timeline, health score, rescue plan, ICS
+  app/notify.py                   prioritised alerts, one small function per rule
+  app/ai/                         GenAI layer (Gemini), one module per feature:
+    brief.py                        free text to a plan, re-planning, budget estimates
+    ideas.py · invites.py           ideas; invite concepts, art prompts, proof-read posters
+    assistant.py · schedule.py      Ask Utsav; run sheet and smart reminders
+  app/gemini_client.py            REST client (key in a header, never logged)
+  app/whatsapp.py                 WhatsApp Business Cloud API client
+  app/routers/                    events.py (plans, AI, art) · whatsapp.py (sends, webhook)
+  app/auth.py · limits.py         sessions (cookie or bearer), login and AI quotas
+  app/store.py · store_firestore.py  SQLite locally, Firestore in production, same API
+  app/schemas.py                  Pydantic validation at every boundary
+
+frontend/js/                      vanilla ES modules, no build step, type-checked by TypeScript
+  main.js        routing and boot          api.js · offline.js  fetch, bearer token, offline cache + sync
+  home.js        events and create form    event.js             plan tabs, what-if, chat
+  panels.js      budget, timeline, checklist                     replan.js            edit the brief and re-plan
+  ideas.js       AI ideas                  invites.js · invite-art.js  concepts, posters, canvas designs, sharing
+  notify.js      bell and alerts           dom.js               escaping and formatting helpers
+
+tests/                            one file per feature (security, events, brief, invites, AI, WhatsApp…)
+  js/            frontend unit tests       e2e/                 journey test and WCAG audit in Chrome
 ```
 
 ## Android & iOS apps: offline-first
@@ -66,7 +79,7 @@ Utsav installs like a native app on Android, iPhone and desktop. It has a home-s
 - `frontend/manifest.json` sets the name, standalone display, theme colour, icons (including a maskable one) and an "Plan a new event" shortcut.
 - `frontend/sw.js` is the service worker. Versioned `/v/<build>/` assets are cache-first (they're immutable), pages are network-first with an offline fallback, and `/api/` is never cached.
 - **Install:** on Android/Chrome, use the **⬇ Install app** button in the top bar or the browser menu. On iPhone/Safari, use Share → *Add to Home Screen*.
-- Phones need an **HTTPS** deployment (Vercel or Cloud Run) to install; `localhost` only works on the same computer.
+- Phones need an **HTTPS** deployment (Cloud Run) to install; `localhost` only works on the same computer.
 - **For the App Store / Play Store:** wrap the deployed app with Capacitor (`npx cap add ios android`). No rewrite is needed.
 
 ## WhatsApp Business (Cloud API)
@@ -120,5 +133,3 @@ The tests cover rupee formatting, exact budget allocation, task status, health s
 ## Deploy (Cloud Run): live demo
 `PROJECT_ID=<project> deploy/cloudrun.sh` builds the `Dockerfile` with Cloud Build, stores the Gemini key from `.env` in Secret Manager, enables Firestore (native mode, asia-south1) and deploys with `UTSAV_STORE=firestore`, so instances are stateless and data survives redeploys and scaling (1–3 instances, one always warm so there is no cold start). Optional WhatsApp credentials in `.env` are also stored as secrets. It's live at **https://utsav-242709395679.asia-south1.run.app**. Local development and tests use SQLite; `scripts/test-firestore.sh` runs the same suite against the Firestore emulator.
 
-## Deploy (Vercel)
-`vercel.json` serves `frontend/` as static files and `api/index.py` as the Python function. Set `GEMINI_API_KEY` in the project's environment variables. There is deliberately no `pyproject.toml`: Vercel's `uv` builder would ignore `requirements.txt` if one existed. Note that SQLite lives in `/tmp` on Vercel, which is temporary; use a managed database for real users.

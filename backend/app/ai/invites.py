@@ -127,6 +127,7 @@ def _clean_invite(raw: Any) -> list[dict[str, Any]]:
 
 
 async def generate_invite(event: dict[str, Any], details: dict[str, str]) -> dict[str, Any]:
+    """Three invitation concepts from Gemini, or three deterministic ones offline."""
     facts = _invite_facts(event, details)
     prompt = f"Tone: {details['tone']}\n<event>{json.dumps(facts, ensure_ascii=False)}</event>"
     try:
@@ -143,7 +144,9 @@ _DETAIL_LIMITS = {"host": 100, "venue": 150, "time": 60, "rsvp": 150}
 
 def _merge_details(details: dict[str, str], raw: Any) -> dict[str, str]:
     """Fill the host/venue/time/RSVP boxes the user left empty with what the brief says.
-    What the user typed always wins."""
+
+    What the user typed always wins.
+    """
     found = raw.get("details") if isinstance(raw, dict) else None
     merged = dict(details)
     for key, limit in _DETAIL_LIMITS.items():

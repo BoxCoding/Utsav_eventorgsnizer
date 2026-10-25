@@ -4,6 +4,7 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 .venv/bin/ruff check .
+.venv/bin/python -m mypy
 .venv/bin/python -m pytest -q --cov=backend --cov-report=term:skip-covered
 npm run --silent lint
 npm run --silent typecheck

@@ -79,44 +79,55 @@ async function request(method, path, body) {
   return data;
 }
 
+const cacheable = (method, path) =>
+  (method === 'GET' && !LIVE_ONLY.has(path)) || (method === 'PATCH' && EVENT_PATH.test(path));
+
+/** Remember what an online answer means for this device: token, session, offline copy. */
+async function rememberOnline(method, path, data) {
+  if (data?.token) {
+    setToken(data.token);
+    delete data.token;
+  }
+  // Opening the app offline right after signing in must find the user, not the
+  // signed-out session that was cached when the app first started.
+  if (data?.user && path.startsWith('/api/auth/')) offline.cachePut('/api/auth/session', { user: data.user });
+  if (path === '/api/auth/logout') {
+    setToken(null);
+    await offline.clearAll();
+  } else if (cacheable(method, path)) {
+    offline.cachePut(path, data); // a PATCH answers with the same view as the GET
+  }
+}
+
+/** With no network: serve reads from the device, and queue edits it can apply itself. */
+async function answerOffline(method, path, body) {
+  if (method === 'GET' && !LIVE_ONLY.has(path)) {
+    const saved = await offline.cacheGet(path);
+    if (saved) return saved;
+    throw new ApiError(0, "You're offline, and this hasn't been opened on this device yet.");
+  }
+  const queueable = method === 'PATCH' && EVENT_PATH.test(path)
+    && Object.keys(body).every((k) => OFFLINE_FIELDS.has(k));
+  const saved = queueable && await offline.cacheGet(path);
+  if (!saved) throw new ApiError(0, "You're offline. Your plan is saved on this device; this action needs internet.");
+  await offline.enqueue({ path, body, base: { done: saved.event.done, spend: saved.event.spend } });
+  const view = offline.applyEdit(saved, body);
+  await offline.cachePut(path, view);
+  connectivity(false);
+  return view;
+}
+
 export async function api(method, path, body) {
   if (!OFFLINE_FIRST) return request(method, path, body);
   try {
     const data = await request(method, path, body);
-    if (data?.token) {
-      setToken(data.token);
-      delete data.token;
-    }
-    // Opening the app offline right after signing in must find the user, not the
-    // signed-out session that was cached when the app first started.
-    if (data?.user && path.startsWith('/api/auth/')) offline.cachePut('/api/auth/session', { user: data.user });
-    if (path === '/api/auth/logout') {
-      setToken(null);
-      await offline.clearAll();
-    } else if ((method === 'GET' && !LIVE_ONLY.has(path)) || (method === 'PATCH' && EVENT_PATH.test(path))) {
-      offline.cachePut(path, data); // a PATCH answers with the same view as the GET
-    }
+    await rememberOnline(method, path, data);
     connectivity(true);
     return data;
   } catch (err) {
     if (err.status !== 0) throw err;
     connectivity(false);
-    if (method === 'GET' && !LIVE_ONLY.has(path)) {
-      const saved = await offline.cacheGet(path);
-      if (saved) return saved;
-      throw new ApiError(0, "You're offline, and this hasn't been opened on this device yet.");
-    }
-    if (method === 'PATCH' && EVENT_PATH.test(path) && Object.keys(body).every((k) => OFFLINE_FIELDS.has(k))) {
-      const saved = await offline.cacheGet(path);
-      if (saved) {
-        await offline.enqueue({ path, body, base: { done: saved.event.done, spend: saved.event.spend } });
-        const view = offline.applyEdit(saved, body);
-        await offline.cachePut(path, view);
-        connectivity(false);
-        return view;
-      }
-    }
-    throw new ApiError(0, "You're offline. Your plan is saved on this device; this action needs internet.");
+    return answerOffline(method, path, body);
   }
 }
 

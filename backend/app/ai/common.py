@@ -33,5 +33,6 @@ def _event_block(event: dict[str, Any], plan: dict[str, Any]) -> str:
     return f"<event>{json.dumps(_event_data(event, plan), ensure_ascii=False)}</event>"
 
 def pretty_date(iso: str) -> str:
+    """Format an ISO date for people, e.g. 'Saturday, 12 June 2027'."""
     d = date.fromisoformat(iso)
     return f"{d:%A}, {d.day} {d:%B %Y}"

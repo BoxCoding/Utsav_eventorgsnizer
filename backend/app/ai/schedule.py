@@ -38,6 +38,7 @@ def _clean_run_sheet(raw: Any) -> list[dict[str, str]]:
 
 
 async def generate_run_sheet(event: dict[str, Any], plan: dict[str, Any]) -> dict[str, Any]:
+    """Day-of run sheet from Gemini, or an offline skeleton built from the plan."""
     details = (event.get("invite") or {}).get("details") or {}
     facts = {
         **_event_data(event, plan),
@@ -115,8 +116,10 @@ def _clean_alerts(raw: Any) -> list[dict[str, Any]]:
 
 
 async def generate_brief_alerts(event: dict[str, Any], plan: dict[str, Any]) -> dict[str, Any]:
-    """Reminders tailored to the brief. Offline there are none: the rule-based alerts
-    still cover dates, tasks and budget."""
+    """Reminders tailored to the brief.
+
+    Offline there are none: the rule-based alerts still cover dates, tasks and budget.
+    """
     facts = {
         **_event_data(event, plan),
         "date": event["event_date"],

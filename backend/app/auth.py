@@ -111,6 +111,7 @@ async def register(
     payload: RegisterRequest, response: Response,
     x_utsav_client: str | None = Header(default=None),
 ) -> dict:
+    """Create an account and sign it in (the native app also receives its token)."""
     if store.get_user_by_email(payload.email) is not None:
         raise HTTPException(status_code=409, detail="an account with this email already exists")
     salt = secrets.token_bytes(16)
@@ -127,6 +128,7 @@ async def login(
     payload: LoginRequest, response: Response,
     x_utsav_client: str | None = Header(default=None),
 ) -> dict:
+    """Sign in with email and password; rate-limited per email."""
     if _rate_limited(payload.email):
         raise HTTPException(status_code=429, detail="too many attempts — wait a minute")
     user = store.get_user_by_email(payload.email)
@@ -147,6 +149,7 @@ async def logout(
     utsav_session: str | None = Cookie(default=None, alias=COOKIE_NAME),
     authorization: str | None = Header(default=None),
 ) -> dict:
+    """End the session, from the cookie or the bearer token."""
     token = _token(utsav_session, authorization)
     if token:
         store.delete_session(_hash_token(token))

@@ -65,6 +65,16 @@ await step('an unrealistic budget is flagged live', async () => {
   await page.waitForFunction(() => /low/i.test(document.querySelector('#budget-hint').textContent), null, { timeout: 5000 });
 });
 
+await step('"Plan from my description" reads free text and fills the form', async () => {
+  await page.fill('#ev-brief', 'A birthday party for my daughter with 40 guests, budget around 50k, in Pune.');
+  await page.click('#brief-btn');
+  await page.waitForSelector('#brief-result:not([hidden]) .br-head');
+  assert.match(await text('#brief-result'), /what Utsav understood/);
+  assert.equal(await page.inputValue('#ev-guests'), '40');
+  assert.equal(await page.inputValue('#ev-budget'), '50000');
+  await page.fill('#ev-brief', '');
+});
+
 await step('a blank budget is estimated, not defaulted', async () => {
   await page.fill('#ev-budget', '');
   await page.fill('#ev-name', 'E2E Lisbon Wedding');
@@ -78,6 +88,16 @@ await step('a blank budget is estimated, not defaulted', async () => {
   const { event } = await server(`/api/events/${eventId}`);
   assert.ok(event.budget > 0 && event.currency === 'EUR', `budget ${event.budget} ${event.currency}`);
   assert.match(event.budget_note, /Estimated by Utsav/);
+});
+
+await step('editing the brief proposes a re-plan for review', async () => {
+  await page.locator('#brief-card summary').click();
+  await page.fill('#brief-edit', 'Lisbon wedding for 150 guests with a mehndi night and live fado music.');
+  await page.click('#replan-btn');
+  await page.waitForSelector('#replan-preview:not([hidden]) #replan-apply');
+  assert.match(await text('#replan-preview'), /Proposed changes/);
+  await page.click('#replan-cancel');
+  await page.waitForSelector('#replan-preview', { state: 'hidden' });
 });
 
 await step('ticking a task saves it and updates progress', async () => {

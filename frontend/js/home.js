@@ -41,16 +41,16 @@ export async function renderHome() {
 }
 
 // Personalisation proposed from the brief, sent with the form on create.
-let extras = { custom_tasks: [], split_override: null, skipped: [], budget_note: '' };
+let extras;
 
 const FIELD_INPUTS = {
   name: '#ev-name', event_date: '#ev-date', guests: '#ev-guests', budget: '#ev-budget',
   currency: '#ev-currency', city: '#ev-city', tradition: '#ev-tradition', vibe: '#ev-vibe',
 };
 
-function showBrief(result) {
-  const { fields, custom_tasks: tasks, split, summary, source } = result;
-  const skipped = result.skipped || [];
+const NO_EXTRAS = () => ({ custom_tasks: [], split_override: null, skipped: [], budget_note: '' });
+
+function fillForm(fields) {
   $(`#event-form input[name="kind"][value="${fields.kind}"]`).checked = true;
   for (const [key, sel] of Object.entries(FIELD_INPUTS)) {
     if (fields[key] != null) {
@@ -58,29 +58,57 @@ function showBrief(result) {
       $(sel).classList.add('filled');
     }
   }
+}
+
+const listHtml = (items) => items.map((x) => `<li>${esc(x)}</li>`).join('');
+
+function tasksHtml(tasks, skipped) {
+  if (!tasks.length) return '';
+  const label = skipped.length ? `Your checklist: ${tasks.length} tasks written for this event`
+    : `${tasks.length} personalised tasks added to your checklist`;
+  return `<p class="br-label">${label}</p>
+    <ul class="br-tasks">${tasks.map((t) => `<li><span>${esc(t.title)}</span><small>${esc(t.category)} · ${t.lead_days} days before</small></li>`).join('')}</ul>`;
+}
+
+function estimateHtml(est, currency) {
+  if (!est) return '';
+  const how = est.source === 'gemini' ? 'Gemini sized it from your requirements' : 'Utsav sized it from your guest count';
+  return `<div class="br-estimate"><p class="br-label">Budget estimated for you</p>
+    <p><strong>${money(est.amount, currency || 'INR')}</strong> · ${esc(est.reasoning)}</p>
+    <p class="muted small">You didn't give a budget, so ${how}. Change it below if you like.</p></div>`;
+}
+
+function splitHtml(split) {
+  const cats = split ? Object.entries(split) : [];
+  if (!cats.length) return '';
+  return `<p class="br-label">Budget categories designed for your event</p>
+    <div class="br-split">${cats.map(([c, v]) => `<span><b>${Math.round(v * 100)}%</b>${esc(c)}</span>`).join('')}</div>`;
+}
+
+function nextStepHtml(fields) {
+  const missing = ['event_date', 'guests', 'budget'].filter((k) => fields[k] == null);
+  return missing.length
+    ? `<p class="br-missing">Please add: ${missing.map((m) => m.replace('_', ' ')).join(', ')}. Then check the details below.</p>`
+    : '<p class="br-ok">Details filled in below. Check them (especially the exact date), then build your plan.</p>';
+}
+
+function showBrief(result) {
+  const { fields, custom_tasks: tasks, split, summary, source } = result;
+  const skipped = result.skipped || [];
   const est = result.budget_estimate;
+  fillForm(fields);
   extras = { custom_tasks: tasks, split_override: split, skipped,
     budget_note: est ? `Estimated by ${est.source === 'gemini' ? 'Gemini' : 'Utsav'}: ${est.reasoning}` : '' };
-  const missing = ['event_date', 'guests', 'budget'].filter((k) => fields[k] == null);
-  const cats = split ? Object.entries(split) : [];
   const box = $('#brief-result');
   box.hidden = false;
   box.innerHTML = `
     <div class="br-head"><strong>✦ Here's what Utsav understood</strong>
       <span class="pill">${source === 'gemini' ? 'Read by Gemini' : 'Offline reading'}</span></div>
-    <ul class="br-summary">${summary.map((x) => `<li>${esc(x)}</li>`).join('')}</ul>
+    <ul class="br-summary">${listHtml(summary)}</ul>
     ${result.suggestions?.length ? `<div class="br-suggest"><p class="br-label">💡 Utsav suggests</p>
-      <ul>${result.suggestions.map((x) => `<li>${esc(x)}</li>`).join('')}</ul></div>` : ''}
-    ${tasks.length ? `<p class="br-label">${skipped.length ? `Your checklist: ${tasks.length} tasks written for this event` : `${tasks.length} personalised tasks added to your checklist`}</p>
-      <ul class="br-tasks">${tasks.map((t) => `<li><span>${esc(t.title)}</span><small>${esc(t.category)} · ${t.lead_days} days before</small></li>`).join('')}</ul>` : ''}
-    ${est ? `<div class="br-estimate"><p class="br-label">Budget estimated for you</p>
-      <p><strong>${money(est.amount, fields.currency || 'INR')}</strong> · ${esc(est.reasoning)}</p>
-      <p class="muted small">You didn't give a budget, so ${est.source === 'gemini' ? 'Gemini sized it from your requirements' : 'Utsav sized it from your guest count'}. Change it below if you like.</p></div>` : ''}
-    ${cats.length ? `<p class="br-label">Budget categories designed for your event</p>
-      <div class="br-split">${cats.map(([c, v]) => `<span><b>${Math.round(v * 100)}%</b>${esc(c)}</span>`).join('')}</div>` : ''}
-
-    ${missing.length ? `<p class="br-missing">Please add: ${missing.map((m) => m.replace('_', ' ')).join(', ')}. Then check the details below.</p>`
-      : '<p class="br-ok">Details filled in below. Check them (especially the exact date), then build your plan.</p>'}`;
+      <ul>${listHtml(result.suggestions)}</ul></div>` : ''}
+    ${tasksHtml(tasks, skipped)}${estimateHtml(est, fields.currency)}${splitHtml(split)}
+    ${nextStepHtml(fields)}`;
 }
 
 const VERDICT = {
@@ -112,9 +140,68 @@ async function updateBudgetHint() {
   } catch { hint.textContent = ''; }
 }
 
+async function readBrief() {
+  const brief = $('#ev-brief').value.trim();
+  if (brief.length < 15) {
+    toast('Tell Utsav a little more about your event first');
+    return;
+  }
+  const btn = $('#brief-btn');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner" aria-hidden="true"></span> Reading your description…';
+  try {
+    showBrief(await api('POST', '/api/events/brief', { brief }));
+    $('#brief-result').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  } catch (err) {
+    toast(err.message);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '✦ Plan from my description';
+  }
+}
+
+const formValues = (form) => ({
+  name: $('#ev-name').value.trim(),
+  kind: form.elements.kind.value,
+  event_date: $('#ev-date').value,
+  guests: Number($('#ev-guests').value),
+  budget: Number($('#ev-budget').value) || null, // blank: the server sizes it
+  currency: $('#ev-currency').value,
+  brief: $('#ev-brief').value.trim(),
+  ...extras,
+  city: $('#ev-city').value.trim(),
+  tradition: $('#ev-tradition').value.trim(),
+  vibe: $('#ev-vibe').value.trim(),
+});
+
+async function createEvent(form, onCreated) {
+  const error = $('#event-error');
+  error.textContent = '';
+  if (!$('#ev-name').value.trim() || !$('#ev-date').value) {
+    error.textContent = 'Please add a name and a date.';
+    return;
+  }
+  const button = form.querySelector('button[type="submit"]');
+  button.disabled = true;
+  button.textContent = 'Building your plan…';
+  try {
+    const { event } = await api('POST', '/api/events', formValues(form));
+    form.reset();
+    extras = NO_EXTRAS();
+    $('#brief-result').hidden = true;
+    for (const el of form.querySelectorAll('.filled')) el.classList.remove('filled');
+    onCreated(event.id);
+  } catch (err) {
+    error.textContent = err.message;
+  } finally {
+    button.disabled = false;
+    button.textContent = 'Build my plan';
+  }
+}
+
 export function bindEventForm(onCreated) {
   const form = $('#event-form');
-  const error = $('#event-error');
+  extras = NO_EXTRAS();
   $('#ev-currency').innerHTML = currencyOptions('INR');
   const checkBudget = debounce(updateBudgetHint, 350);
   for (const sel of ['#ev-budget', '#ev-guests', '#ev-currency']) $(sel).addEventListener('input', checkBudget);
@@ -123,59 +210,9 @@ export function bindEventForm(onCreated) {
     if (e.target.dataset.use) { $('#ev-budget').value = e.target.dataset.use; updateBudgetHint(); }
   });
   updateBudgetHint();
-  $('#brief-btn').addEventListener('click', async () => {
-    const brief = $('#ev-brief').value.trim();
-    if (brief.length < 15) {
-      toast('Tell Utsav a little more about your event first');
-      return;
-    }
-    const btn = $('#brief-btn');
-    btn.disabled = true;
-    btn.innerHTML = '<span class="spinner" aria-hidden="true"></span> Reading your description…';
-    try {
-      showBrief(await api('POST', '/api/events/brief', { brief }));
-      $('#brief-result').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-    } catch (err) {
-      toast(err.message);
-    } finally {
-      btn.disabled = false;
-      btn.textContent = '✦ Plan from my description';
-    }
-  });
-  form.addEventListener('submit', async (e) => {
+  $('#brief-btn').addEventListener('click', readBrief);
+  form.addEventListener('submit', (e) => {
     e.preventDefault();
-    error.textContent = '';
-    if (!$('#ev-name').value.trim() || !$('#ev-date').value) {
-      error.textContent = 'Please add a name and a date.';
-      return;
-    }
-    const button = form.querySelector('button[type="submit"]');
-    button.disabled = true;
-    button.textContent = 'Building your plan…';
-    try {
-      const { event } = await api('POST', '/api/events', {
-        name: $('#ev-name').value.trim(),
-        kind: form.elements.kind.value,
-        event_date: $('#ev-date').value,
-        guests: Number($('#ev-guests').value),
-        budget: Number($('#ev-budget').value) || null, // blank: the server sizes it
-        currency: $('#ev-currency').value,
-        brief: $('#ev-brief').value.trim(),
-        ...extras,
-        city: $('#ev-city').value.trim(),
-        tradition: $('#ev-tradition').value.trim(),
-        vibe: $('#ev-vibe').value.trim(),
-      });
-      form.reset();
-      extras = { custom_tasks: [], split_override: null, skipped: [], budget_note: '' };
-      $('#brief-result').hidden = true;
-      for (const el of form.querySelectorAll('.filled')) el.classList.remove('filled');
-      onCreated(event.id);
-    } catch (err) {
-      error.textContent = err.message;
-    } finally {
-      button.disabled = false;
-      button.textContent = 'Build my plan';
-    }
+    createEvent(form, onCreated);
   });
 }

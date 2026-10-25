@@ -168,12 +168,29 @@ async function ask(question) {
   }
 }
 
-export function bindEventView(onDeleted) {
-  const phone = window.matchMedia('(max-width: 640px)');
-  selectTab = setupTabs($('#plan-tabs'), (tab) => {
-    // With the bar fixed at the bottom, bring the chosen section's top into view.
-    if (phone.matches) document.getElementById(tab.getAttribute('aria-controls')).scrollIntoView({ block: 'start' });
-  });
+/** Tick or untick one task by id (a filter may hide others, so never rebuild from the DOM). */
+function setDone(id, on) {
+  const done = new Set(state.event.done);
+  if (on) done.add(id);
+  else done.delete(id);
+  save({ done: [...done] });
+}
+
+async function draftRunSheet(btn) {
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner" aria-hidden="true"></span> Drafting the day…';
+  try {
+    const { run_sheet: sheet } = await api('POST', `/api/events/${state.event.id}/runsheet`);
+    state.event.run_sheet = sheet;
+    renderTimeline($('#panel-timeline'), state.event, state.plan);
+    $('#runsheet-btn').focus();
+  } catch (err) {
+    toast(err.message);
+    btn.disabled = false;
+  }
+}
+
+function bindPlanPanels() {
   $('#panel-budget').addEventListener('change', (e) => {
     if (!e.target.classList.contains('spend')) return;
     const spend = {};
@@ -182,37 +199,16 @@ export function bindEventView(onDeleted) {
     }
     save({ spend });
   });
-  $('#panel-timeline').addEventListener('click', async (e) => {
+  $('#panel-timeline').addEventListener('click', (e) => {
     if (e.target.id === 'runsheet-btn') {
-      const btn = e.target;
-      btn.disabled = true;
-      btn.innerHTML = '<span class="spinner" aria-hidden="true"></span> Drafting the day…';
-      try {
-        const { run_sheet: sheet } = await api('POST', `/api/events/${state.event.id}/runsheet`);
-        state.event.run_sheet = sheet;
-        renderTimeline($('#panel-timeline'), state.event, state.plan);
-        $('#runsheet-btn').focus();
-      } catch (err) {
-        toast(err.message);
-        btn.disabled = false;
-      }
+      draftRunSheet(e.target);
       return;
     }
     const id = e.target.closest('[data-toggle]')?.dataset.toggle;
-    if (!id) return;
-    const done = new Set(state.event.done);
-    if (done.has(id)) done.delete(id);
-    else done.add(id);
-    save({ done: [...done] });
+    if (id) setDone(id, !state.event.done.includes(id));
   });
   $('#panel-checklist').addEventListener('change', (e) => {
-    const id = e.target.dataset.task;
-    if (!id) return;
-    // Toggle by id: a filter may hide other tasks, so don't rebuild from visible checkboxes.
-    const done = new Set(state.event.done);
-    if (e.target.checked) done.add(id);
-    else done.delete(id);
-    save({ done: [...done] });
+    if (e.target.dataset.task) setDone(e.target.dataset.task, e.target.checked);
   });
   $('#panel-checklist').addEventListener('click', (e) => {
     const f = e.target.closest('[data-cfilter]')?.dataset.cfilter;
@@ -222,9 +218,9 @@ export function bindEventView(onDeleted) {
     $(`[data-cfilter="${f}"]`).focus();
   });
   for (const id of ['#wi-guests', '#wi-budget', '#wi-date', '#wi-currency']) $(id).addEventListener('change', saveWhatIf);
-  bindIdeas(generateIdeas);
-  bindInvites(save);
-  bindBriefCard(save);
+}
+
+function bindChat() {
   $('#chat-suggestions').addEventListener('click', (e) => {
     const q = e.target.closest('.chip-btn')?.dataset.q;
     if (q) ask(q);
@@ -241,6 +237,9 @@ export function bindEventView(onDeleted) {
     $('#chat-input').value = '';
     ask(q);
   });
+}
+
+function bindHeaderActions(onDeleted) {
   $('#print-btn').addEventListener('click', () => window.print());
   $('#delete-btn').addEventListener('click', async () => {
     if (!window.confirm(`Delete "${state.event.name}"? This cannot be undone.`)) return;
@@ -248,6 +247,20 @@ export function bindEventView(onDeleted) {
     toast('Event deleted');
     onDeleted();
   });
+}
+
+export function bindEventView(onDeleted) {
+  const phone = window.matchMedia('(max-width: 640px)');
+  selectTab = setupTabs($('#plan-tabs'), (tab) => {
+    // With the bar fixed at the bottom, bring the chosen section's top into view.
+    if (phone.matches) document.getElementById(tab.getAttribute('aria-controls')).scrollIntoView({ block: 'start' });
+  });
+  bindPlanPanels();
+  bindChat();
+  bindHeaderActions(onDeleted);
+  bindIdeas(generateIdeas);
+  bindInvites(save);
+  bindBriefCard(save);
 }
 
 /** Jump to a plan section, e.g. from a notification. */

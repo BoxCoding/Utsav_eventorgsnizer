@@ -1,5 +1,7 @@
-"""Persistence. SQLite here; UTSAV_STORE=firestore swaps in store_firestore (same API).
-Every event query is scoped by user_id (data isolation)."""
+"""Persistence: SQLite here; UTSAV_STORE=firestore swaps in store_firestore (same API).
+
+Every event query is scoped by user_id (data isolation).
+"""
 from __future__ import annotations
 
 import json
@@ -109,6 +111,7 @@ def _conn() -> Iterator[sqlite3.Connection]:
 
 
 def init_db() -> None:
+    """Create tables and apply migrations for older databases."""
     with _conn() as conn:
         conn.executescript(SCHEMA)
         existing = {row["name"] for row in conn.execute("PRAGMA table_info(events)")}
@@ -119,21 +122,24 @@ def init_db() -> None:
 
 # ── users & sessions ────────────────────────────────────────────────────
 def create_user(name: str, email: str, password_hash: str, salt: str) -> int:
+    """Insert a user and return the new id (raises ValueError if the email is taken)."""
     with _conn() as conn:
-        cur = conn.execute(
-            "INSERT INTO users (name, email, password_hash, salt) VALUES (?, ?, ?, ?)",
+        row = conn.execute(
+            "INSERT INTO users (name, email, password_hash, salt) VALUES (?, ?, ?, ?) RETURNING id",
             (name, email, password_hash, salt),
-        )
-        return int(cur.lastrowid)
+        ).fetchone()
+        return int(row["id"])
 
 
 def get_user_by_email(email: str) -> dict | None:
+    """The user row for an email, or None."""
     with _conn() as conn:
         row = conn.execute("SELECT * FROM users WHERE email = ?", (email,)).fetchone()
     return dict(row) if row else None
 
 
 def create_session(token_hash: str, user_id: int, expires_at: str) -> None:
+    """Store a session by the hash of its token."""
     with _conn() as conn:
         conn.execute(
             "INSERT INTO sessions (token_hash, user_id, expires_at) VALUES (?, ?, ?)",
@@ -142,6 +148,7 @@ def create_session(token_hash: str, user_id: int, expires_at: str) -> None:
 
 
 def get_session_user(token_hash: str) -> dict | None:
+    """The signed-in user for an unexpired session token hash, or None."""
     with _conn() as conn:
         row = conn.execute(
             "SELECT u.id, u.name, u.email FROM sessions s JOIN users u ON u.id = s.user_id "
@@ -152,6 +159,7 @@ def get_session_user(token_hash: str) -> dict | None:
 
 
 def delete_session(token_hash: str) -> None:
+    """Remove a session (sign-out)."""
     with _conn() as conn:
         conn.execute("DELETE FROM sessions WHERE token_hash = ?", (token_hash,))
 
@@ -178,21 +186,23 @@ def _decode(row: sqlite3.Row) -> dict[str, Any]:
 
 
 def create_event(user_id: int, fields: dict[str, Any]) -> int:
+    """Insert an event for a user and return its id."""
     values: dict[str, Any] = {c: fields[c] for c in fields.keys() & EDITABLE}
     for key, column in JSON_COLUMNS.items():
         if fields.get(key) is not None:
             values[column] = json.dumps(fields[key])
     cols = sorted(values)
     with _conn() as conn:
-        cur = conn.execute(
+        row = conn.execute(
             f"INSERT INTO events (user_id, {', '.join(cols)}) "
-            f"VALUES (?, {', '.join('?' for _ in cols)})",
+            f"VALUES (?, {', '.join('?' for _ in cols)}) RETURNING id",
             (user_id, *(values[c] for c in cols)),
-        )
-        return int(cur.lastrowid)
+        ).fetchone()
+        return int(row["id"])
 
 
 def list_events(user_id: int) -> list[dict[str, Any]]:
+    """All of a user's events, soonest first."""
     with _conn() as conn:
         rows = conn.execute(
             "SELECT * FROM events WHERE user_id = ? ORDER BY event_date", (user_id,)
@@ -201,6 +211,7 @@ def list_events(user_id: int) -> list[dict[str, Any]]:
 
 
 def get_event(user_id: int, event_id: int) -> dict[str, Any] | None:
+    """One event if it belongs to the user, else None."""
     with _conn() as conn:
         row = conn.execute(
             "SELECT * FROM events WHERE id = ? AND user_id = ?", (event_id, user_id)
@@ -226,6 +237,7 @@ def update_event(user_id: int, event_id: int, fields: dict[str, Any]) -> None:
 
 
 def delete_event(user_id: int, event_id: int) -> bool:
+    """Delete the user's event; returns False if it wasn't theirs."""
     with _conn() as conn:
         cur = conn.execute("DELETE FROM events WHERE id = ? AND user_id = ?", (event_id, user_id))
         return cur.rowcount > 0
@@ -233,6 +245,7 @@ def delete_event(user_id: int, event_id: int) -> bool:
 
 # ── AI artwork (binary, so kept out of the event row) ───────────────────
 def save_art(event_id: int, key: str, mime: str, data: bytes) -> None:
+    """Store (or replace) one artwork image for an event."""
     with _conn() as conn:
         conn.execute(
             "INSERT OR REPLACE INTO artwork (event_id, key, mime, data) VALUES (?, ?, ?, ?)",
@@ -241,6 +254,7 @@ def save_art(event_id: int, key: str, mime: str, data: bytes) -> None:
 
 
 def get_art(event_id: int, key: str) -> tuple[str, bytes] | None:
+    """One stored artwork as (mime type, bytes), or None."""
     with _conn() as conn:
         row = conn.execute(
             "SELECT mime, data FROM artwork WHERE event_id = ? AND key = ?", (event_id, key)
@@ -249,18 +263,21 @@ def get_art(event_id: int, key: str) -> tuple[str, bytes] | None:
 
 
 def art_keys(event_id: int) -> list[str]:
+    """Keys of all artwork stored for an event."""
     with _conn() as conn:
         rows = conn.execute("SELECT key FROM artwork WHERE event_id = ?", (event_id,)).fetchall()
     return [r["key"] for r in rows]
 
 
 def clear_art(event_id: int) -> None:
+    """Delete all artwork for an event."""
     with _conn() as conn:
         conn.execute("DELETE FROM artwork WHERE event_id = ?", (event_id,))
 
 
 # ── WhatsApp message ids -> event, so delivery webhooks find their guest ──
 def record_wa(user_id: int, event_id: int, message_ids: list[str]) -> None:
+    """Remember which event and user sent each WhatsApp message id."""
     with _conn() as conn:
         conn.executemany(
             "INSERT OR REPLACE INTO wa_messages (message_id, user_id, event_id) VALUES (?, ?, ?)",
@@ -269,6 +286,7 @@ def record_wa(user_id: int, event_id: int, message_ids: list[str]) -> None:
 
 
 def wa_owner(message_id: str) -> tuple[int, int] | None:
+    """(user id, event id) for a WhatsApp message id, or None."""
     with _conn() as conn:
         row = conn.execute(
             "SELECT user_id, event_id FROM wa_messages WHERE message_id = ?", (message_id,)

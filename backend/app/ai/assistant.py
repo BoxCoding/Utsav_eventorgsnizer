@@ -65,6 +65,7 @@ async def answer(
     question: str,
     history: list[dict[str, str]],
 ) -> dict[str, str]:
+    """Answer a question about one plan with Gemini, grounded in the plan's real figures."""
     prompt = f"{_plan_block(event, plan)}\n<question>{question}</question>"
     try:
         text = await gemini_client.generate_text(
@@ -74,6 +75,7 @@ async def answer(
     except LLMUnavailableError:
         return {"answer": fallback_answer(event, plan, question), "source": "offline"}
 def fallback_answer(event: dict[str, Any], plan: dict[str, Any], question: str) -> str:
+    """Rule-based answer from the plan itself, used when Gemini is unavailable."""
     q = question.lower()
     budget = plan["budget"]
     fmt = lambda n: money(n, budget["currency"])  # noqa: E731

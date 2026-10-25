@@ -50,3 +50,10 @@ def event_payload(**overrides) -> dict:
         "tradition": "Marwari",
         **overrides,
     }
+
+
+def create_event(client, **kw) -> dict:
+    """Create an event through the API and return its {event, plan} view."""
+    r = client.post("/api/events", json=event_payload(**kw))
+    assert r.status_code == 201, r.text
+    return r.json()

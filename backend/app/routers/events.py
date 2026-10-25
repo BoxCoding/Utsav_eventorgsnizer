@@ -71,6 +71,7 @@ async def estimate(
 
 @router.get("")
 async def list_events(user: dict = Depends(current_user)) -> dict:
+    """The user's events with a compact plan summary for each card."""
     events = store.list_events(user["id"])
     summaries = []
     for event in events:
@@ -94,12 +95,15 @@ async def list_events(user: dict = Depends(current_user)) -> dict:
 @router.post("/brief", dependencies=[AI_TEXT])
 async def read_brief(payload: BriefRequest, user: dict = Depends(current_user)) -> dict:
     """Turn a free-text description into form fields, personalised tasks and a budget split.
-    Nothing is saved: the user reviews the result before creating the event."""
+
+    Nothing is saved: the user reviews the result before creating the event.
+    """
     return await ai.read_brief(payload.brief, kind=payload.kind)
 
 
 @router.post("", status_code=201)
 async def create_event(payload: EventIn, user: dict = Depends(current_user)) -> dict:
+    """Create an event; a blank budget is estimated from guests, type and currency."""
     fields = payload.model_dump()
     fields["event_date"] = payload.event_date.isoformat()
     # AI-proposed extras are re-validated here: tasks must use this event's categories,
@@ -118,6 +122,7 @@ async def create_event(payload: EventIn, user: dict = Depends(current_user)) -> 
 
 @router.get("/{event_id}")
 async def get_event(event_id: int, user: dict = Depends(current_user)) -> dict:
+    """One event with its freshly computed plan."""
     return _view(_owned(user, event_id))
 
 
@@ -125,6 +130,7 @@ async def get_event(event_id: int, user: dict = Depends(current_user)) -> dict:
 async def update_event(
     event_id: int, payload: EventPatch, user: dict = Depends(current_user)
 ) -> dict:
+    """Apply whitelisted changes, pruning ticks and spend that no longer apply."""
     event = _owned(user, event_id)
     fields = payload.model_dump(exclude_none=True)
     if "event_date" in fields:
@@ -157,6 +163,7 @@ async def update_event(
 
 @router.delete("/{event_id}", status_code=204)
 async def delete_event(event_id: int, user: dict = Depends(current_user)) -> Response:
+    """Delete an event and its artwork."""
     if not store.delete_event(user["id"], event_id):
         raise HTTPException(status_code=404, detail="event not found")
     return Response(status_code=204)
@@ -164,8 +171,11 @@ async def delete_event(event_id: int, user: dict = Depends(current_user)) -> Res
 
 @router.post("/{event_id}/replan", dependencies=[AI_TEXT])
 async def replan(event_id: int, payload: BriefRequest, user: dict = Depends(current_user)) -> dict:
-    """Re-read an edited brief against the current plan. Nothing is saved: the client shows
-    the proposed changes and PATCHes only what the user accepts."""
+    """Re-read an edited brief against the current plan.
+
+    Nothing is saved: the client shows the proposed changes and PATCHes only what the
+    user accepts.
+    """
     event = _owned(user, event_id)
     return await ai.read_brief(payload.brief, kind=event["kind"], current=ai.current_plan(event))
 
@@ -211,6 +221,7 @@ async def generate_invite(
 
 @router.get("/{event_id}/invite/art")
 async def list_art(event_id: int, user: dict = Depends(current_user)) -> dict:
+    """Keys of the AI artwork stored for the event's invite."""
     _owned(user, event_id)
     return {"art": store.art_keys(event_id)}
 
@@ -244,9 +255,11 @@ POSTER_ATTEMPTS = 3
 
 
 async def _paint_poster(event: dict[str, Any], idx: int, concept: dict[str, Any]) -> dict:
-    """A full illustrated poster with its text painted in. Gemini proof-reads every attempt
-    against the exact date, time and venue; a poster that never passes is not saved, and the
-    app keeps its text-overlay cards, which are always exact."""
+    """A full illustrated poster with its text painted in.
+
+    Gemini proof-reads every attempt against the exact date, time and venue; a poster that
+    never passes is not saved, and the app keeps its text-overlay cards, which are always exact.
+    """
     lines = ai.poster_lines(concept, event)
     prompt = ai.poster_prompt(concept, event)
     for _ in range(POSTER_ATTEMPTS):
@@ -273,6 +286,7 @@ async def _paint_poster(event: dict[str, Any], idx: int, concept: dict[str, Any]
 
 @router.get("/{event_id}/invite/art/{key}")
 async def get_art(event_id: int, key: str, user: dict = Depends(current_user)) -> Response:
+    """Serve one stored artwork image."""
     _owned(user, event_id)
     art = store.get_art(event_id, key)
     if art is None:
@@ -283,6 +297,7 @@ async def get_art(event_id: int, key: str, user: dict = Depends(current_user)) -
 
 @router.post("/{event_id}/ask", dependencies=[AI_TEXT])
 async def ask(event_id: int, payload: AskRequest, user: dict = Depends(current_user)) -> dict:
+    """Answer a question about this plan (Ask Utsav)."""
     event = _owned(user, event_id)
     history = [turn.model_dump() for turn in payload.history]
     return await ai.answer(event, build_plan(event), payload.question, history)
@@ -290,6 +305,7 @@ async def ask(event_id: int, payload: AskRequest, user: dict = Depends(current_u
 
 @router.get("/{event_id}/calendar.ics")
 async def calendar(event_id: int, user: dict = Depends(current_user)) -> Response:
+    """Download the plan's tasks as an .ics calendar."""
     event = _owned(user, event_id)
     return Response(
         to_ics(event, build_plan(event)),

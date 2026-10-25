@@ -1,5 +1,4 @@
-"""GenAI layer: personalised ideas, invitations, brief reading, run sheets, reminders and a
-plan-grounded assistant.
+"""GenAI layer: ideas, invitations, brief reading, run sheets, reminders and an assistant.
 
 The model receives the deterministic plan as context and is told to quote figures only
 from it. User-supplied text is passed as delimited data, never as instructions. When

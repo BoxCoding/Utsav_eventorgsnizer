@@ -15,6 +15,7 @@ from typing import Any
 
 @dataclass(frozen=True)
 class Task:
+    """One checklist task: what to do, under which budget category, and how early."""
     category: str
     title: str
     lead_days: int  # ideal days before the event to have this done
@@ -23,6 +24,7 @@ class Task:
 
     @property
     def id(self) -> str:
+        """The task's stable id, also used as its calendar UID."""
         slug = re.sub(r"[^a-z0-9]+", "-", self.title.lower()).strip("-")
         return f"c-{slug}" if self.custom else slug
 
@@ -204,12 +206,12 @@ def task_categories(split: dict[str, float]) -> set[str]:
 
 
 def standard_ids(kind: str) -> set[str]:
+    """Ids of the standard checklist tasks for an event type."""
     return {t.id for t in PROFILES[kind]["tasks"]}
 
 
 def event_tasks(event: dict[str, Any]) -> list[Task]:
-    """Standard checklist for the event type, minus tasks the brief made irrelevant,
-    plus tasks personalised from the brief."""
+    """The event's checklist: standard tasks, minus skipped ones, plus personalised ones."""
     skipped = set(event.get("skipped") or [])
     standard = [t for t in PROFILES[event["kind"]]["tasks"] if t.id not in skipped]
     custom = [
@@ -220,10 +222,12 @@ def event_tasks(event: dict[str, Any]) -> list[Task]:
 
 
 def task_ids(event: dict[str, Any]) -> set[str]:
+    """Ids of every task in this event's checklist, standard and custom."""
     return {t.id for t in event_tasks(event)}
 
 
 def event_split(event: dict[str, Any]) -> dict[str, float]:
+    """The budget split this event uses: AI-designed if present, else the standard one."""
     return event.get("split_override") or PROFILES[event["kind"]]["split"]
 
 
@@ -269,6 +273,7 @@ def _status(due: date, today: date, done: bool) -> str:
 
 
 def build_plan(event: dict[str, Any], today: date | None = None) -> dict[str, Any]:
+    """Compute the whole plan for an event: budget lines, dated tasks, rescue plan, health."""
     today = today or date.today()
     profile = PROFILES[event["kind"]]
     currency = event.get("currency") or "INR"
@@ -277,7 +282,7 @@ def build_plan(event: dict[str, Any], today: date | None = None) -> dict[str, An
     spend = event.get("spend") or {}
 
     planned = allocate(event["budget"], event_split(event))
-    lines = [
+    lines: list[dict[str, Any]] = [
         {
             "category": cat,
             "planned": amount,
@@ -288,7 +293,7 @@ def build_plan(event: dict[str, Any], today: date | None = None) -> dict[str, An
     ]
     spent = sum(line["spent"] for line in lines)
 
-    tasks = []
+    tasks: list[dict[str, Any]] = []
     for task in event_tasks(event):
         due = event_date - timedelta(days=task.lead_days)
         tasks.append(
@@ -376,9 +381,11 @@ def to_ics(event: dict[str, Any], plan: dict[str, Any]) -> str:
     """Export open tasks + the event itself as an iCalendar file."""
 
     def esc(text: str) -> str:
+        """Escape text for an iCalendar property value."""
         return re.sub(r"([,;\\])", r"\\\1", text).replace("\n", "\\n")
 
     def vevent(uid: str, day: str, summary: str) -> list[str]:
+        """One all-day VEVENT block for the calendar export."""
         start = date.fromisoformat(day)
         return [
             "BEGIN:VEVENT",
