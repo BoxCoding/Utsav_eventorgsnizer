@@ -135,8 +135,10 @@ async def receive_webhook(request: Request) -> dict:
         return {"ok": True}
     for message_id, new in whatsapp.statuses(payload):
         owner = store.wa_owner(message_id)
-        event = store.get_event(*owner) if owner else None
-        if owner is None or event is None:
+        if owner is None:
+            continue
+        event = store.get_event(*owner)
+        if event is None:
             continue
         guests = event.get("guest_list") or []
         rank = whatsapp.STATUS_RANK

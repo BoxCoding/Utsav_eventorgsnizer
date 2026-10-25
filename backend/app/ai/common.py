@@ -32,6 +32,12 @@ def _event_data(event: dict[str, Any], plan: dict[str, Any]) -> dict[str, Any]:
 def _event_block(event: dict[str, Any], plan: dict[str, Any]) -> str:
     return f"<event>{json.dumps(_event_data(event, plan), ensure_ascii=False)}</event>"
 
+def clean_strings(value: Any, limit: int, size: int) -> list[str]:
+    """Up to `limit` non-empty, trimmed strings (each at most `size` chars) from a model list."""
+    items = value if isinstance(value, list) else []
+    return [str(x).strip()[:size] for x in items if str(x).strip()][:limit]
+
+
 def pretty_date(iso: str) -> str:
     """Format an ISO date for people, e.g. 'Saturday, 12 June 2027'."""
     d = date.fromisoformat(iso)

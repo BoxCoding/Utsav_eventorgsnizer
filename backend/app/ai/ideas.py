@@ -5,7 +5,7 @@ from typing import Any
 
 from .. import gemini_client
 from ..gemini_client import LLMUnavailableError
-from .common import _HEX, IDEA_KEYS, _event_block
+from .common import _HEX, IDEA_KEYS, _event_block, clean_strings
 
 IDEAS_SYSTEM = """You are Utsav, a warm, inventive event planner who knows celebrations
 across cultures and regions.
@@ -28,17 +28,11 @@ def _clean_ideas(raw: Any) -> dict[str, Any]:
     if not isinstance(raw, dict) or not isinstance(raw.get("theme"), str):
         raise LLMUnavailableError("ideas payload missing theme")
 
-    def strings(value: Any, limit: int) -> list[str]:
-        """Up to `limit` non-empty, trimmed strings from a model-provided list."""
-        if not isinstance(value, list):
-            return []
-        return [str(v).strip()[:220] for v in value if str(v).strip()][:limit]
-
     ideas = {
         "theme": raw["theme"].strip()[:80],
         "tagline": str(raw.get("tagline", "")).strip()[:120],
         "palette": [c for c in raw.get("palette", []) if isinstance(c, str) and _HEX.match(c)][:5],
-        **{key: strings(raw.get(key), 6) for key in IDEA_KEYS},
+        **{key: clean_strings(raw.get(key), 6, 220) for key in IDEA_KEYS},
     }
     if not ideas["decor"]:
         raise LLMUnavailableError("ideas payload empty")

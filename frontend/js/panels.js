@@ -238,7 +238,10 @@ export function renderChecklist(panel, plan, filter) {
   const C = 2 * Math.PI * 42;
 
   const cats = new Map(); // category -> tasks (Map.groupBy is too new for older Safari)
-  for (const t of tasks) cats.set(t.category, [...(cats.get(t.category) || []), t]);
+  for (const t of tasks) {
+    if (!cats.has(t.category)) cats.set(t.category, []);
+    cats.get(t.category).push(t);
+  }
   const groups = [...cats].map(([cat, all], i) => checkGroupHtml(cat, all, i, filter)).join('');
 
   panel.innerHTML = `

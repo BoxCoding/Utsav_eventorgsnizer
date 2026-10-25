@@ -6,6 +6,13 @@ const ESC = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;
 /** Escape any user- or model-supplied text before it goes into innerHTML. */
 export const esc = (value) => String(value ?? '').replace(/[&<>"']/g, (c) => ESC[c]);
 
+/** Escaped <li> items. */
+export const listHtml = (items) => items.map((x) => `<li>${esc(x)}</li>`).join('');
+
+/** The "Utsav suggests" box shown under a brief reading ('' when there are none). */
+export const suggestionsHtml = (suggestions) => (suggestions?.length
+  ? `<div class="br-suggest"><p class="br-label">💡 Utsav suggests</p><ul>${listHtml(suggestions)}</ul></div>` : '');
+
 export const CURRENCIES = [
   ['INR', 'Indian rupee'], ['USD', 'US dollar'], ['EUR', 'Euro'], ['GBP', 'British pound'],
   ['AED', 'UAE dirham'], ['SAR', 'Saudi riyal'], ['SGD', 'Singapore dollar'], ['AUD', 'Australian dollar'],

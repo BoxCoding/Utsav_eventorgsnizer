@@ -1,6 +1,6 @@
 // Event list + the "plan a new event" form.
 import { api } from './api.js';
-import { $, currencyOptions, debounce, esc, fmtDate, money, todayIso, toast } from './dom.js';
+import { $, currencyOptions, debounce, esc, fmtDate, listHtml, money, suggestionsHtml, todayIso, toast } from './dom.js';
 
 const ICON = { wedding: '💍', birthday: '🎂', community: '🏘️' };
 const HEALTH_CLASS = { 'On track': 'ok', 'Needs attention': 'warn', 'At risk': 'bad' };
@@ -48,7 +48,7 @@ const FIELD_INPUTS = {
   currency: '#ev-currency', city: '#ev-city', tradition: '#ev-tradition', vibe: '#ev-vibe',
 };
 
-const NO_EXTRAS = () => ({ custom_tasks: [], split_override: null, skipped: [], budget_note: '' });
+const noExtras = () => ({ custom_tasks: [], split_override: null, skipped: [], budget_note: '' });
 
 function fillForm(fields) {
   $(`#event-form input[name="kind"][value="${fields.kind}"]`).checked = true;
@@ -59,8 +59,6 @@ function fillForm(fields) {
     }
   }
 }
-
-const listHtml = (items) => items.map((x) => `<li>${esc(x)}</li>`).join('');
 
 function tasksHtml(tasks, skipped) {
   if (!tasks.length) return '';
@@ -105,8 +103,7 @@ function showBrief(result) {
     <div class="br-head"><strong>✦ Here's what Utsav understood</strong>
       <span class="pill">${source === 'gemini' ? 'Read by Gemini' : 'Offline reading'}</span></div>
     <ul class="br-summary">${listHtml(summary)}</ul>
-    ${result.suggestions?.length ? `<div class="br-suggest"><p class="br-label">💡 Utsav suggests</p>
-      <ul>${listHtml(result.suggestions)}</ul></div>` : ''}
+    ${suggestionsHtml(result.suggestions)}
     ${tasksHtml(tasks, skipped)}${estimateHtml(est, fields.currency)}${splitHtml(split)}
     ${nextStepHtml(fields)}`;
 }
@@ -187,7 +184,7 @@ async function createEvent(form, onCreated) {
   try {
     const { event } = await api('POST', '/api/events', formValues(form));
     form.reset();
-    extras = NO_EXTRAS();
+    extras = noExtras();
     $('#brief-result').hidden = true;
     for (const el of form.querySelectorAll('.filled')) el.classList.remove('filled');
     onCreated(event.id);
@@ -201,7 +198,7 @@ async function createEvent(form, onCreated) {
 
 export function bindEventForm(onCreated) {
   const form = $('#event-form');
-  extras = NO_EXTRAS();
+  extras = noExtras();
   $('#ev-currency').innerHTML = currencyOptions('INR');
   const checkBudget = debounce(updateBudgetHint, 350);
   for (const sel of ['#ev-budget', '#ev-guests', '#ev-currency']) $(sel).addEventListener('input', checkBudget);

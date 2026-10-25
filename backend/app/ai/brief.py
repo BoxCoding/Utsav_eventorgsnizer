@@ -19,6 +19,7 @@ from ..planner import (
     standard_ids,
     task_categories,
 )
+from .common import clean_strings
 
 # ── free-text brief → structured event + personalised plan ──────────────
 BRIEF_SYSTEM = """You are Utsav's intake planner. The user describes their event in their own
@@ -76,8 +77,8 @@ def _clean_brief(raw: Any, today: date, kind: str | None = None) -> dict[str, An
     # A full AI checklist replaces the standard one; a short list only adds to it.
     skipped = sorted(standard_ids(kind)) if len(tasks) >= FULL_CHECKLIST else []
     return {"fields": fields, "custom_tasks": tasks, "split": split, "skipped": skipped,
-            "budget_estimate": estimate, "summary": _strings(raw, "summary", 6, 160),
-            "suggestions": _strings(raw, "suggestions", 5, 240)}
+            "budget_estimate": estimate, "summary": clean_strings(raw.get("summary"), 6, 160),
+            "suggestions": clean_strings(raw.get("suggestions"), 5, 240)}
 
 
 def _brief_fields(raw: dict[str, Any], today: date, kind: str) -> dict[str, Any]:
@@ -131,10 +132,7 @@ def _brief_tasks(raw: dict[str, Any], categories: set[str]) -> list[dict[str, An
     return tasks[:20]
 
 
-def _strings(raw: dict[str, Any], key: str, limit: int, size: int) -> list[str]:
-    value = raw.get(key)
-    items = value if isinstance(value, list) else []
-    return [str(x).strip()[:size] for x in items if str(x).strip()][:limit]
+
 
 
 REPLAN_NOTE = """

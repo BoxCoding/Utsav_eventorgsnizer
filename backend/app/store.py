@@ -110,6 +110,13 @@ def _conn() -> Iterator[sqlite3.Connection]:
         conn.close()
 
 
+def _new_id(cur: sqlite3.Cursor) -> int:
+    """Id of the row an INSERT just created (portable; RETURNING needs SQLite 3.35+)."""
+    if cur.lastrowid is None:
+        raise RuntimeError("INSERT did not create a row")
+    return cur.lastrowid
+
+
 def init_db() -> None:
     """Create tables and apply migrations for older databases."""
     with _conn() as conn:
@@ -124,11 +131,11 @@ def init_db() -> None:
 def create_user(name: str, email: str, password_hash: str, salt: str) -> int:
     """Insert a user and return the new id (raises ValueError if the email is taken)."""
     with _conn() as conn:
-        row = conn.execute(
-            "INSERT INTO users (name, email, password_hash, salt) VALUES (?, ?, ?, ?) RETURNING id",
+        cur = conn.execute(
+            "INSERT INTO users (name, email, password_hash, salt) VALUES (?, ?, ?, ?)",
             (name, email, password_hash, salt),
-        ).fetchone()
-        return int(row["id"])
+        )
+        return _new_id(cur)
 
 
 def get_user_by_email(email: str) -> dict | None:
@@ -193,12 +200,12 @@ def create_event(user_id: int, fields: dict[str, Any]) -> int:
             values[column] = json.dumps(fields[key])
     cols = sorted(values)
     with _conn() as conn:
-        row = conn.execute(
+        cur = conn.execute(
             f"INSERT INTO events (user_id, {', '.join(cols)}) "
-            f"VALUES (?, {', '.join('?' for _ in cols)}) RETURNING id",
+            f"VALUES (?, {', '.join('?' for _ in cols)})",
             (user_id, *(values[c] for c in cols)),
-        ).fetchone()
-        return int(row["id"])
+        )
+        return _new_id(cur)
 
 
 def list_events(user_id: int) -> list[dict[str, Any]]:

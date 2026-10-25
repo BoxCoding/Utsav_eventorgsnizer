@@ -1,7 +1,7 @@
 // "Your brief" card: edit the free-text brief and re-plan the event from it.
 // Gemini re-reads the brief (event type stays fixed); the user picks which changes to apply.
 import { api } from './api.js';
-import { $, esc, fmtDate, money, toast } from './dom.js';
+import { $, esc, fmtDate, listHtml, money, suggestionsHtml, toast } from './dom.js';
 
 const LABELS = {
   name: 'Name', event_date: 'Date', guests: 'Guests', budget: 'Budget', currency: 'Currency',
@@ -30,8 +30,6 @@ export function renderBriefCard(event) {
     : 'Describe the event in your own words to personalise this plan';
   $('#replan-preview').hidden = true;
 }
-
-const listHtml = (items) => items.map((x) => `<li>${esc(x)}</li>`).join('');
 
 function detailsHtml(event, fields) {
   const currency = fields.currency || event.currency;
@@ -65,7 +63,7 @@ function categoriesHtml(oldSplit, split) {
   const cats = split ? Object.entries(split) : [];
   if (!cats.length) return '';
   const oldCats = new Set(Object.keys(oldSplit || {}));
-  const dropped = [...oldCats].filter((c) => !(c in split));
+  const dropped = [...oldCats].filter((c) => !Object.hasOwn(split, c));
   return `<p class="br-label">Budget categories</p>
     <div class="br-split">${cats.map(([c, v]) => `<span class="${oldCats.size && !oldCats.has(c) ? 'new' : ''}"><b>${Math.round(v * 100)}%</b>${esc(c)}</span>`).join('')}
       ${dropped.map((c) => `<span class="gone">${esc(c)}</span>`).join('')}</div>
@@ -93,8 +91,7 @@ function showPreview(result) {
     <div class="br-head"><strong>✦ Proposed changes</strong>
       <span class="pill">${result.source === 'gemini' ? 'Read by Gemini' : 'Offline reading'}</span></div>
     ${result.summary.length ? `<ul class="br-summary">${listHtml(result.summary)}</ul>` : ''}
-    ${result.suggestions?.length ? `<div class="br-suggest"><p class="br-label">💡 Utsav suggests</p>
-      <ul>${listHtml(result.suggestions)}</ul></div>` : ''}
+    ${suggestionsHtml(result.suggestions)}
     ${detailsHtml(event, result.fields)}
     ${tasksHtml(event.custom_tasks || [], result.custom_tasks)}
     ${categoriesHtml(event.split_override, result.split)}
