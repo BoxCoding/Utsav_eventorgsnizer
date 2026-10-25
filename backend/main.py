@@ -24,7 +24,7 @@ CSP = (
 )
 
 
-store.init_db()  # at import, not lifespan: serverless runtimes may skip lifespan events
+store.init_db()  # at import, so the app is ready however it starts (uvicorn, tests)
 app = FastAPI(title="Utsav", version="1.0.0")
 app.add_middleware(GZipMiddleware, minimum_size=800)
 # Only the native app shells; the web app is same-origin. No cookies cross origins.

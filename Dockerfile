@@ -1,5 +1,7 @@
 # Utsav on Cloud Run: one small image serving the API and the installable web app.
 FROM python:3.12-slim
+# Production data lives in Firestore (UTSAV_STORE=firestore, set by deploy/cloudrun.sh); the
+# SQLite fallback path is in /tmp because the container runs as a non-root user.
 ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 \
     UTSAV_DB=/tmp/utsav.db UTSAV_COOKIE_SECURE=1
 WORKDIR /app
